@@ -1,0 +1,34 @@
+# --- Security & Credentials ---
+.env
+.env.*
+secrets/
+
+# --- Python & Environment ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.pytest_cache/
+.python-version
+uv.lock
+
+# --- Project Temporary Data (Do not push) ---
+_raw/*
+!_raw/.gitkeep
+_staged/*
+!_staged/.gitkeep
+
+# --- Wiki Sources (PDFs) & Raw Markdown (Extracted Text) ---
+# これらの原始資料はサイズが大きく、機密性が高いためGit管理から除外
+wiki/sources/*
+!wiki/sources/.gitkeep
+wiki/raw_markdown/*
+!wiki/raw_markdown/.gitkeep
+
+# --- Infrastructure Data ---
+data/
+docker-compose.override.yml
+.vscode/
+.idea/
+.DS_Store
+*.swp

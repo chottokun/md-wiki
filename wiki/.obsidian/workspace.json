@@ -1,0 +1,221 @@
+{
+  "main": {
+    "id": "0cb21b540438db0c",
+    "type": "split",
+    "children": [
+      {
+        "id": "631f2f387276f4bb",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "8e75f42f3e45c6de",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Home.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Home"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "88129c04a031fcb9",
+    "type": "split",
+    "children": [
+      {
+        "id": "7cc18910ba3ac095",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "88e6b50393ea1219",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "ファイルエクスプローラ"
+            }
+          },
+          {
+            "id": "606f557f2a265b58",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "検索"
+            }
+          },
+          {
+            "id": "147e38a3b25416f0",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "ブックマーク"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "875c6c686b1d81eb",
+    "type": "split",
+    "children": [
+      {
+        "id": "c57a112e0a555ebd",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "2fbe487426fcd83c",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "log.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "logへのバックリンク"
+            }
+          },
+          {
+            "id": "87a7b8bcd6cc993c",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "log.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "logからのアウトゴーイングリンク"
+            }
+          },
+          {
+            "id": "fa3759bd5294bb95",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "タグ"
+            }
+          },
+          {
+            "id": "d9791700f5abf115",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "すべてのプロパティ"
+            }
+          },
+          {
+            "id": "afa5a21d39be2078",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "log.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "logのアウトライン"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:クイックスイッチャーを開く": false,
+      "graph:グラフビューを開く": false,
+      "canvas:新規キャンバスを作成": false,
+      "daily-notes:今日のデイリーノートを開く": false,
+      "templates:テンプレートを挿入": false,
+      "command-palette:コマンドパレットを開く": false,
+      "bases:新規ベースを作成": false
+    }
+  },
+  "active": "8e75f42f3e45c6de",
+  "lastOpenFiles": [
+    "raw_markdown/cot_paper_raw.md",
+    "cot_paper.md",
+    "raw_markdown/integration_test_raw.md",
+    "integration_test.md",
+    "Home.md",
+    "log.md",
+    "self_rag_paper.md",
+    "sources/self_rag_paper.pdf",
+    "raw_markdown/self_rag_paper_raw.md",
+    "Rae2021.md",
+    "rank_rag_paper.md",
+    "raw_markdown/graph_rag_paper_raw.md",
+    "raw_markdown",
+    "long_rag_paper.md",
+    "crag_paper.md",
+    "react_paper.md",
+    "graph_rag_paper.md",
+    "self/_rag/_paper.md",
+    "self_rag_metrics.md",
+    "self/_rag",
+    "self",
+    "無題のファイル 1.canvas",
+    "無題のファイル.canvas",
+    "langgraph_hitl.md",
+    "sources/integration_test.txt",
+    "sources/long_rag_paper.pdf",
+    "Synthesis_RAG手法の比較と進化.md",
+    "sources/react_paper.pdf",
+    "sources/graph_rag_paper.pdf",
+    "sources/crag_paper.pdf",
+    "sources/rank_rag_paper.pdf",
+    "2026-04-25.md"
+  ]
+}
