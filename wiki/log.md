@@ -26,3 +26,4 @@
 ## [2026-04-26 08:30] ingest | Updated graph_rag_paper
 ## [2026-04-26 08:31] ingest | Updated long_rag_paper
 ## [2026-04-26 08:34] ingest | Updated rank_rag_paper
+## [2026-04-26 08:36] ingest | Updated react_paper
