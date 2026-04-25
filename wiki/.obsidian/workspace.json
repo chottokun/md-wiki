@@ -185,6 +185,8 @@
   },
   "active": "8e75f42f3e45c6de",
   "lastOpenFiles": [
+    "raw_markdown/rank_rag_paper_raw.md",
+    "rank_rag_paper.md",
     "raw_markdown/long_rag_paper_raw.md",
     "long_rag_paper.md",
     "raw_markdown/graph_rag_paper_raw.md",
@@ -201,7 +203,6 @@
     "sources/self_rag_paper.pdf",
     "raw_markdown/self_rag_paper_raw.md",
     "Rae2021.md",
-    "rank_rag_paper.md",
     "raw_markdown",
     "react_paper.md",
     "self/_rag/_paper.md",
