@@ -185,6 +185,8 @@
   },
   "active": "8e75f42f3e45c6de",
   "lastOpenFiles": [
+    "raw_markdown/crag_paper_raw.md",
+    "crag_paper.md",
     "raw_markdown/cot_paper_raw.md",
     "cot_paper.md",
     "raw_markdown/integration_test_raw.md",
@@ -199,7 +201,6 @@
     "raw_markdown/graph_rag_paper_raw.md",
     "raw_markdown",
     "long_rag_paper.md",
-    "crag_paper.md",
     "react_paper.md",
     "graph_rag_paper.md",
     "self/_rag/_paper.md",

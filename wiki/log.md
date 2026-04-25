@@ -22,3 +22,4 @@
 ## [2026-04-26 08:11] ingest | Updated self_rag_paper
 ## [2026-04-26 08:16] ingest | Updated cot_paper
 ## [2026-04-26 08:26] ingest | Updated cot_paper
+## [2026-04-26 08:27] ingest | Updated crag_paper
