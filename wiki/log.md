@@ -28,3 +28,14 @@
 ## [2026-04-26 08:34] ingest | Updated rank_rag_paper
 ## [2026-04-26 08:36] ingest | Updated react_paper
 ## [2026-04-26 08:39] ingest | Updated self_rag_paper
+## [2026-04-26 14:43] sync | Rebuilt Qdrant index from Wiki files.
+## [2026-04-26 14:44] lint_report | Found issues/activity:
+- Red-Link (未作成概念) in [[self_rag_paper]]: [[raw_markdown/self_rag_paper_raw.md]]
+- Red-Link (未作成概念) in [[react_paper]]: [[raw_markdown/react_paper_raw.md]]
+- Red-Link (未作成概念) in [[graph_rag_paper]]: [[raw_markdown/graph_rag_paper_raw.md]]
+- Red-Link (未作成概念) in [[cot_paper]]: [[raw_markdown/cot_paper_raw.md]]
+- Red-Link (未作成概念) in [[cot_paper]]: [[Chain-of-Thought Prompting]]
+- Red-Link (未作成概念) in [[crag_paper]]: [[raw_markdown/crag_paper_raw.md]]
+- Red-Link (未作成概念) in [[long_rag_paper]]: [[raw_markdown/long_rag_paper_raw.md]]
+- Red-Link (未作成概念) in [[rank_rag_paper]]: [[raw_markdown/rank_rag_paper_raw.md]]
+- Stale Knowledge: [[cot_paper]], [[crag_paper]], [[graph_rag_paper]], [[long_rag_paper]], [[rank_rag_paper]], [[react_paper]], [[self_rag_paper]]

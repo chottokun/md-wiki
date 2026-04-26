@@ -138,6 +138,7 @@ if __name__ == "__main__":
     parser.add_argument("--query", "-q", action="store_true", help="クエリ（質問回答）モードを実行")
     parser.add_argument("--maintenance", "-m", action="store_true", help="メンテナンス（景観要約）モードを実行")
     parser.add_argument("--lint", "-l", action="store_true", help="Wikiの健康診断（リンク切れ・風化チェック）を実行")
+    parser.add_argument("--sync", "-s", action="store_true", help="Wikiファイルを正としてQdrantを再構築（同期）する")
     parser.add_argument("--yes", "-y", action="store_true", help="確認プロンプトをスキップして自動承認する")
     
     args = parser.parse_args()
@@ -148,6 +149,12 @@ if __name__ == "__main__":
             print("質問内容を入力してください。")
         else:
             run_query(args.input)
+    elif args.sync:
+        print("\n🔄 QdrantインデックスをWikiファイルから再構築しています...")
+        qdrant_store.sync_from_disk()
+        from output.obsidian_writer import ObsidianWriter
+        ObsidianWriter().add_log_entry("sync", "Rebuilt Qdrant index from Wiki files.")
+        print("✅ 同期が完了しました。")
     elif args.lint:
         run_workflow({"status": "starting_lint"})
     elif args.maintenance:

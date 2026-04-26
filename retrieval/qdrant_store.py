@@ -1,5 +1,6 @@
 import os
 import logging
+from pathlib import Path
 from typing import List, Dict, Any
 from langchain_core.documents import Document
 from langchain_qdrant import QdrantVectorStore, RetrievalMode, FastEmbedSparse
@@ -117,6 +118,33 @@ class QdrantHybridStore:
         """
         logger.info(f"検索実行中: '{query}' (k={k})")
         return self.vector_store.similarity_search(query, k=k)
+
+    def sync_from_disk(self, wiki_dir: str = "wiki", raw_md_dir: str = "wiki/raw_markdown"):
+        """
+        ディスク上のMDファイルを正として、Qdrantインデックスを完全に再構築する。
+        """
+        logger.info("Wikiファイルを正としてQdrantインデックスを再構築中...")
+        self.delete_collection()
+        # 再作成は初期化時に自動で行われる（あるいはここでも呼ぶ）
+        self.__init__(collection_name=self.collection_name, url=self.client._client.rest_uri)
+        
+        # 1. 完成Wikiページの同期
+        wiki_path = Path(wiki_dir)
+        for p in wiki_path.glob("*.md"):
+            if p.name not in ["Home.md", "log.md"]:
+                content = p.read_text(encoding="utf-8")
+                self.add_text(content, {"source": p.stem, "type": "wiki_page"})
+                
+        # 2. 原始資料 (Raw Markdown) の同期
+        raw_path = Path(raw_md_dir)
+        if raw_path.exists():
+            for p in raw_path.glob("*.md"):
+                content = p.read_text(encoding="utf-8")
+                # 元のPDF名を推測（_rawを除去）
+                source_name = p.stem.replace("_raw", "") + ".pdf"
+                self.add_text(content, {"source": source_name, "type": "raw_source"})
+        
+        logger.info("Qdrantの再同期が完了しました。")
 
     def delete_collection(self):
         """

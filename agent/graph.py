@@ -80,13 +80,11 @@ def lint_node(state: AgentState) -> Dict[str, Any]:
             
         content = p.read_text(encoding="utf-8")
         
-        # 1. リンク切れの検出
-        # Markdownエスケープを除去して[[リンク]]を検索
+        # 1. リンク切れ・未作成概念の検出
         links = re.findall(r"\[\[(.*?)\]\]", content.replace("\\", ""))
         for link in links:
-            # 外部ソースやHome以外のリンク先が存在するか確認
             if link not in page_names and link != "Home" and not link.startswith("sources/"):
-                issues.append(f"Broken Link in [[{p.stem}]]: target [[{link}]] does not exist.")
+                issues.append(f"Red-Link (未作成概念) in [[{p.stem}]]: [[{link}]]")
         
         # 2. メタデータの欠落確認
         if "tags:" not in content:
@@ -188,7 +186,11 @@ last_updated: [現在の日付]
 - 重要なポイントを箇条書きで記述。
 
 ## 詳細内容
-具体的な解説を論理的に記述。専門用語には `[[用語]]` で内部リンクを付与。
+具体的な解説を論理的に記述してください。
+【Wikipedia形式のリンク構造化】: 
+- 文章中の**すべての重要な専門用語、手法、技術概念、人物、関連トピック**には、積極的に `[[用語]]` の形式で内部リンク（相対リンク）を付与してください。
+- その用語のWikiページが既に存在するかに関わらず、ナレッジの網羅性を高めるためにリンクを作成してください。
+- 段落ごとに複数のリンクを生成し、知識が網羅的に網の目（ネットワーク）となるようにしてください。
 
 【制約事項】
 - 手動編集セクション（`## 💡 人間の考察` や `## 📝 メモ`）がコンテキスト内にある場合は、**一字一句変えずに必ず出力の末尾に継承**してください。
