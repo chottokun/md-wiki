@@ -1,6 +1,7 @@
 import unittest
 import os
 import logging
+from pathlib import Path
 from langchain_core.documents import Document
 from retrieval.qdrant_store import QdrantHybridStore
 from qdrant_client import QdrantClient
@@ -52,6 +53,30 @@ class TestQdrantHybridStore(unittest.TestCase):
         self.assertTrue(len(results) > 0)
         self.assertEqual(results[0].metadata["source"], "chunk_doc")
         self.assertTrue(len(results[0].page_content) <= 100) # オーバーラップ等を考慮して多少の余裕を持つ
+
+    def test_sync_from_disk(self):
+        # テスト用のファイル配置
+        test_wiki_dir = Path("tests/test_wiki_sync")
+        test_raw_md_dir = Path("tests/test_wiki_sync/raw_markdown")
+        test_wiki_dir.mkdir(parents=True, exist_ok=True)
+        test_raw_md_dir.mkdir(parents=True, exist_ok=True)
+        
+        (test_wiki_dir / "WikiPage.md").write_text("Detailed wiki content", encoding="utf-8")
+        (test_raw_md_dir / "RawPage_raw.md").write_text("Raw fact content", encoding="utf-8")
+        
+        # 同期実行
+        self.store.sync_from_disk(wiki_dir=str(test_wiki_dir), raw_md_dir=str(test_raw_md_dir))
+        
+        # 検索して反映を確認
+        res1 = self.store.search("Detailed wiki content", k=1)
+        self.assertEqual(res1[0].metadata["type"], "wiki_page")
+        
+        res2 = self.store.search("Raw fact content", k=1)
+        self.assertEqual(res2[0].metadata["type"], "raw_source")
+        
+        # クリーンアップ
+        import shutil
+        shutil.rmtree(test_wiki_dir)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
