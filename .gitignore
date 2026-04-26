@@ -25,7 +25,10 @@ wiki/sources/*
 wiki/raw_markdown/*
 !wiki/raw_markdown/.gitkeep
 
-# --- Infrastructure Data ---
+# --- Large Binaries & Apps ---
+*.AppImage
+*.exe
+*.deb
 data/
 docker-compose.override.yml
 .vscode/
