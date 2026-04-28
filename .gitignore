@@ -1,0 +1,42 @@
+# --- Security & Credentials ---
+.env
+.env.*
+secrets/
+
+# --- Python & Environment ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.pytest_cache/
+.python-version
+uv.lock
+
+# --- Project Temporary Data (Do not push) ---
+_raw/*
+!_raw/.gitkeep
+qdrant_data/
+
+# --- Wiki Sources (PDFs) & Raw Markdown (Extracted Text) ---
+# 縺薙ｌ繧峨・荳谺｡諠・ｱ縺ｯ繧ｵ繧､繧ｺ縺悟､ｧ縺阪￥縲∵ｩ溷ｯ・ｧ縺碁ｫ倥＞縺溘ａGit邂｡逅・°繧蛾勁螟・
+# 讎ょｿｵ繝壹・繧ｸ縺ｯLint縺ｧ閾ｪ蜍募・逕滓・蜿ｯ閭ｽ縺ｪ縺溘ａ髯､螟・
+
+# --- Docling / Conversion Cache ---
+docling_output/
+*.docling_cache
+
+# --- Large Binaries & Apps ---
+*.AppImage
+*.exe
+*.deb
+data/
+docker-compose.override.yml
+
+# --- Editor & OS ---
+.vscode/
+.idea/
+.DS_Store
+*.swp
+Thumbs.db
+
+wiki/
