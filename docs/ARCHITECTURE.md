@@ -14,7 +14,8 @@ graph TD
     Wiki[Wikiレイヤー / Compiled Wiki] --> Qdrant
     
     Qdrant -.-> Search[Hybrid Search: Dense + Sparse]
-    Search --> LLM[LLM Agent]
+    Search --> Engine[WikiQueryEngine]
+    Engine --> LLM[LLM Agent]
     LLM --> Response[回答 / 生成]
 ```
 
@@ -78,3 +79,10 @@ Wiki内に存在するが実体のないリンク `[[ページ名]]` を見つ�
 - **ObsidianをIDEとする**: 独自のUIを作らず、Obsidianを「開発環境」として利用します。
 - **ポータブルな運用**: Qdrant Localモードの採用により、Docker不要で、USBメモリやクラウドストレージ経由でナレッジベースを持ち運ぶことが可能です。
 - **不変の事実と流動的な知見**: 一次情報レイヤー（不変）とWikiレイヤー（流動・成長）を分けることで、RAGの精度と柔軟性を両立させています。
+
+---
+
+## 6. 技術詳細
+詳細なモジュール設計については以下のドキュメントを参照してください。
+- [RAG QA Engine (WikiQueryEngine)](./RAG_QA_ENGINE.md)
+- [Wiki Generation Rules](./WIKI_GENERATION_RULES.md)
