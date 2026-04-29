@@ -132,3 +132,9 @@ class QdrantHybridStore:
 
     def delete_collection(self):
         self.client.delete_collection(self.collection_name)
+
+    def close(self):
+        """クライアント接続を明示的に閉じる。"""
+        if hasattr(self, 'client'):
+            self.client.close()
+            logger.info("Qdrant client connection closed.")
