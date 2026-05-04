@@ -22,6 +22,9 @@ docling_parser = DoclingParser()
 qdrant_store = QdrantHybridStore()
 obsidian_writer = ObsidianWriter()
 
+# 正規表現の事前コンパイル (パフォーマンス最適化)
+WIKI_LINK_RE = re.compile(r"\[\[(.*?)\]\]")
+
 def ingest_node(state: AgentState) -> Dict[str, Any]:
     """
     入力ファイルをDoclingでパースし、生のMarkdownテキストを抽出する。
@@ -81,7 +84,7 @@ def lint_node(state: AgentState) -> Dict[str, Any]:
         content = p.read_text(encoding="utf-8")
         
         # 1. リンク切れ・未作成概念の検出
-        links = re.findall(r"\[\[(.*?)\]\]", content.replace("\\", ""))
+        links = WIKI_LINK_RE.findall(content.replace("\\", ""))
         for link in links:
             if link not in page_names and link != "Home" and not link.startswith("sources/"):
                 issues.append(f"Red-Link (未作成概念) in [[{p.stem}]]: [[{link}]]")
@@ -121,7 +124,7 @@ def retrieve_node(state: AgentState) -> Dict[str, Any]:
     
     # 2. 文書内の [[リンク]] を抽出して直接読み込み（コンテキストの欠落防止）
     clean_content = state.get("raw_markdown", "").replace("\\", "")
-    links = re.findall(r"\[\[(.*?)\]\]", clean_content)
+    links = WIKI_LINK_RE.findall(clean_content)
     wiki_dir = Path("wiki")
     
     linked_docs = []
