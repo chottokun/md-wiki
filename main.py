@@ -4,6 +4,7 @@ import logging
 import argparse
 import subprocess
 import os
+import git
 from pathlib import Path
 from typing import Dict, Any
 
@@ -12,12 +13,15 @@ if sys.platform == "win32":
     if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
         sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
+from langgraph.types import Command
+
 from agent.graph import app, qdrant_store
 from core.llm_router import router, LLMLayer
-from retrieval.query_engine import WikiQueryEngine
-from langgraph.types import Command
 from core.config import Config
-import git
+from retrieval.query_engine import WikiQueryEngine
+from retrieval.sync_manager import GitSyncManager
+from output.obsidian_writer import ObsidianWriter
 
 # ロギング構成
 logging.basicConfig(level=logging.INFO)
@@ -71,15 +75,12 @@ def run_workflow(input_data: Dict[str, Any], auto_approve: bool = False):
 
     print("Done: Workflow finished.")
     if current_state and "target_page" in current_state:
-        from output.obsidian_writer import ObsidianWriter
         writer = ObsidianWriter()
         writer.update_index()
         log_type = "maintenance" if "maintenance_topic" in input_data else "ingest"
         writer.add_log_entry(log_type, f"Drafted {current_state['target_page']}")
         run_git_commit(f"Auto-draft: {current_state['target_page']}")
         print(f"Info: Check [[{current_state['target_page']}]] in Obsidian and edit/remove tags.")
-
-import re
 
 def run_query(query: str):
     """
@@ -92,7 +93,6 @@ def run_query(query: str):
     answer = engine.query(query)
     
     # 質問への回答活動をログに記録
-    from output.obsidian_writer import ObsidianWriter
     ObsidianWriter().add_log_entry("query", f"Answered: {query[:30]}...")
     
     print("\n" + "="*50 + "\n" + answer + "\n" + "="*50 + "\n")
@@ -122,7 +122,6 @@ if __name__ == "__main__":
             if not args.input:
                 print("洗練対象のWikiページ名（またはファイルパス）を入力してください。")
             else:
-                from retrieval.sync_manager import GitSyncManager
                 mgr = GitSyncManager(qdrant_store)
                 filename = args.input if args.input.endswith(".md") else f"{args.input}.md"
                 full_path = Config.WIKI_DIR / filename
@@ -158,10 +157,8 @@ if __name__ == "__main__":
         elif args.sync:
             print("\n[Sync] Synchronizing Qdrant index and Git...")
             print("Note: Files with '#未審査' tag will be skipped.")
-            from retrieval.sync_manager import GitSyncManager
             sync_mgr = GitSyncManager(qdrant_store)
             sync_mgr.perform_incremental_sync(include_unreviewed=args.force)
-            from output.obsidian_writer import ObsidianWriter
             ObsidianWriter().add_log_entry("sync", "Performed incremental synchronization.")
             run_git_commit("Auto-sync: User triggered manual sync.")
             print("Done: Synchronization complete.")
