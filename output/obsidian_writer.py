@@ -3,7 +3,7 @@ import re
 import yaml
 import shutil
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Any
 from pathlib import Path
 from datetime import datetime
 from core.utils import normalize_term, parse_frontmatter, dump_frontmatter
@@ -14,7 +14,7 @@ from core.schemas import WikiFrontmatterSchema
 logger = logging.getLogger(__name__)
 
 class ObsidianWriter:
-    def __init__(self, wiki_dir: Optional[str] = None):
+    def __init__(self, wiki_dir: str | None = None):
         self.wiki_dir = Path(wiki_dir) if wiki_dir else Config.WIKI_DIR
         self.wiki_dir.mkdir(parents=True, exist_ok=True)
 
@@ -27,10 +27,10 @@ class ObsidianWriter:
         return "\n".join(list(diff)[2:]) # ヘッダーを除去
 
     def create_draft_file(self, page_name: str, proposed_content: str, 
-                         source_filename: Optional[str] = None, 
-                         source_path: Optional[str] = None,
-                         raw_markdown: Optional[str] = None,
-                         sub_dir: Optional[str] = None) -> Path:
+                         source_filename: str | None = None,
+                         source_path: str | None = None,
+                         raw_markdown: str | None = None,
+                         sub_dir: str | None = None) -> Path:
         """
         レビュー用のファイルを wiki/ (または sub_dir) に作成する。
         """
@@ -90,7 +90,7 @@ class ObsidianWriter:
         logger.info(f"Draft created/updated: {wiki_path}")
         return wiki_path
 
-    def _prepare_metadata(self, base_data: Dict[str, Any], source_link: Optional[str], raw_link: Optional[str], page_name: Optional[str] = None) -> Dict[str, Any]:
+    def _prepare_metadata(self, base_data: dict[str, Any], source_link: str | None, raw_link: str | None, page_name: str | None = None) -> dict[str, Any]:
         """最終的なYAMLメタデータを構築し、Pydanticスキーマで厳密に管理する。"""
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         
@@ -150,7 +150,7 @@ class ObsidianWriter:
             merged_dict["updated"] = now_str
             return merged_dict
 
-    def create_draft_from_schema(self, data: Dict[str, Any], sub_dir: Optional[str] = None) -> Path:
+    def create_draft_from_schema(self, data: dict[str, Any], sub_dir: str | None = None) -> Path:
         page_name = data.get("title", "Untitled")
         proposed_body = data.get("body", "")
         nested_data, clean_body = parse_frontmatter(proposed_body)
@@ -184,7 +184,7 @@ class ObsidianWriter:
             sub_dir=sub_dir
         )
 
-    def _handle_source_file(self, filename: Optional[str], source_path: Optional[str] = None) -> Optional[str]:
+    def _handle_source_file(self, filename: str | None, source_path: str | None = None) -> str | None:
         if not filename: return None
         sources_dir = self.wiki_dir / "sources"
         sources_dir.mkdir(exist_ok=True)
@@ -199,7 +199,7 @@ class ObsidianWriter:
             shutil.copy2(src, sources_dir / filename)
         return f"[[sources/{filename}]]"
 
-    def _handle_raw_markdown(self, name: str, content: Optional[str]) -> Optional[str]:
+    def _handle_raw_markdown(self, name: str, content: str | None) -> str | None:
         if not content: return None
         raw_dir = self.wiki_dir / "raw_markdown"
         raw_dir.mkdir(exist_ok=True)
@@ -207,7 +207,7 @@ class ObsidianWriter:
         raw_path.write_text(content, encoding="utf-8")
         return f"[[raw_markdown/{name}]]"
 
-    def _generate_footer(self, source_link: Optional[str], raw_link: Optional[str]) -> str:
+    def _generate_footer(self, source_link: str | None, raw_link: str | None) -> str:
         footer = "\n\n---\n## 🔗 リソース\n"
         if source_link: footer += f"- **Original Source**: {source_link}\n"
         if raw_link: footer += f"- **Raw Markdown**: {raw_link}\n"
