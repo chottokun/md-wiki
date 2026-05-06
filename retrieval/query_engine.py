@@ -4,6 +4,8 @@ from pathlib import Path
 from typing import List, Dict, Any, Optional
 from langchain_core.documents import Document
 from core.llm_router import LLMLayer
+from core.config import Config
+from core.prompts import get_query_prompt
 
 logger = logging.getLogger(__name__)
 
@@ -13,7 +15,7 @@ class WikiQueryEngine:
     LLMに回答を生成させるエンジン。
     """
 
-    def __init__(self, qdrant_store, router, wiki_dir: Path = Path("wiki")):
+    def __init__(self, qdrant_store, router, wiki_dir: Optional[Path] = None):
         """
         Args:
             qdrant_store: QdrantHybridStore のインスタンス
@@ -22,7 +24,7 @@ class WikiQueryEngine:
         """
         self.qdrant_store = qdrant_store
         self.router = router
-        self.wiki_dir = wiki_dir
+        self.wiki_dir = wiki_dir if wiki_dir else Config.WIKI_DIR
 
     def query(self, query_text: str, k: int = 8) -> str:
         """
@@ -99,18 +101,4 @@ class WikiQueryEngine:
         return "\n\n---\n\n".join(context_parts)
 
     def _build_prompt(self, query: str, context: str, lang_inst: str) -> str:
-        return f"""あなたはWikiのナレッジアシスタントです。{lang_inst}
-以下のWikiページ（整理済み）、関連リンク（自動追跡）、および一次情報（生データ）を参考にして、質問に答えてください。
-
-## コンテキスト
-{context}
-
-## 質問: {query}
-
-## 指示:
-- {lang_inst}
-- Wikiページや関連リンクに概要がある場合はそれを活用し、細かい事実は一次情報から補完してください。
-- 根拠となった情報の出典を必ず [[ページ名]] または [[sources/PDF名]] 形式で明記してください。
-- 外部の知識は絶対に混ぜないでください。
-
-回答:"""
+        return get_query_prompt(query, context, lang_inst)

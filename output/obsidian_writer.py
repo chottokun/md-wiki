@@ -8,13 +8,14 @@ from pathlib import Path
 from datetime import datetime
 from core.utils import normalize_term, parse_frontmatter, dump_frontmatter
 
+from core.config import Config
 from core.schemas import WikiFrontmatterSchema
 
 logger = logging.getLogger(__name__)
 
 class ObsidianWriter:
-    def __init__(self, wiki_dir: str = "wiki"):
-        self.wiki_dir = Path(wiki_dir)
+    def __init__(self, wiki_dir: Optional[str] = None):
+        self.wiki_dir = Path(wiki_dir) if wiki_dir else Config.WIKI_DIR
         self.wiki_dir.mkdir(parents=True, exist_ok=True)
 
     def generate_diff(self, old_text: str, new_text: str) -> str:

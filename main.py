@@ -16,6 +16,8 @@ from agent.graph import app, qdrant_store
 from core.llm_router import router, LLMLayer
 from retrieval.query_engine import WikiQueryEngine
 from langgraph.types import Command
+from core.config import Config
+import git
 
 # ロギング構成
 logging.basicConfig(level=logging.INFO)
@@ -30,13 +32,17 @@ def run_git_commit(message: str):
         message (str): コミットメッセージ。
     """
     try:
-        wiki_dir = "wiki"
-        # 変更のステージング
-        subprocess.run(["git", "add", "."], check=True, capture_output=True, cwd=wiki_dir)
-        # 変更がある場合のみコミットを実行（--quietフラグで変更なし時は終了コード1を返す）
-        result = subprocess.run(["git", "diff", "--staged", "--quiet"], capture_output=True, cwd=wiki_dir)
-        if result.returncode != 0:
-            subprocess.run(["git", "commit", "-m", message], check=True, capture_output=True, cwd=wiki_dir)
+        wiki_dir = Config.WIKI_DIR
+        repo = git.Repo(wiki_dir)
+        
+        lock_file = wiki_dir / ".git" / "index.lock"
+        if lock_file.exists():
+            logger.warning(f"Removing stale git lock file: {lock_file}")
+            lock_file.unlink(missing_ok=True)
+            
+        repo.git.add(all=True)
+        if repo.is_dirty() or repo.untracked_files:
+            repo.git.commit("-m", message)
             print(f"Commit: {message}")
     except Exception as e:
         logger.error(f"Wikiへの自動コミットに失敗しました: {e}")
@@ -119,7 +125,7 @@ if __name__ == "__main__":
                 from retrieval.sync_manager import GitSyncManager
                 mgr = GitSyncManager(qdrant_store)
                 filename = args.input if args.input.endswith(".md") else f"{args.input}.md"
-                full_path = Path("wiki") / filename
+                full_path = Config.WIKI_DIR / filename
                 
                 if not full_path.exists():
                     print(f"Error: {full_path} does not exist.")
@@ -135,8 +141,8 @@ if __name__ == "__main__":
                     else:
                         # git diff を取得するために、wikiリポジトリ内での相対パスを渡す
                         # full_path.name だけだとサブディレクトリに対応できないため、
-                        # wiki/ からの相対パスを計算する
-                        rel_path = full_path.relative_to(Path("wiki"))
+                        # WIKI_DIR からの相対パスを計算する
+                        rel_path = full_path.relative_to(Config.WIKI_DIR)
                         diff = mgr.get_unstaged_diff(str(rel_path))
                         
                         # 差分がない場合、または新規ファイルの場合は、ファイル全体を対象にする

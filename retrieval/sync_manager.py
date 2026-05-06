@@ -1,10 +1,11 @@
-import subprocess
 import logging
 import os
 import re
 from pathlib import Path
 from typing import List, Tuple, Set
+import git
 from retrieval.qdrant_store import QdrantHybridStore
+from core.config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -14,19 +15,16 @@ class GitSyncManager:
     WikiファイルとQdrantインデックスの差分同期を管理する。
     """
     
-    def __init__(self, store: QdrantHybridStore, wiki_dir: str = "wiki"):
+    def __init__(self, store: QdrantHybridStore):
         self.store = store
-        self.wiki_dir = Path(wiki_dir).absolute()
+        self.wiki_dir = Config.WIKI_DIR.absolute()
+        self.repo = git.Repo(self.wiki_dir)
         # 同期状態ファイル
         self.state_file = self.wiki_dir / ".md-wiki-sync-state"
 
     def _get_current_head(self) -> str:
         try:
-            res = subprocess.run(
-                ["git", "rev-parse", "HEAD"], 
-                cwd=self.wiki_dir, capture_output=True, text=True
-            )
-            return res.stdout.strip()
+            return self.repo.head.commit.hexsha
         except:
             return "unknown"
 
@@ -43,38 +41,40 @@ class GitSyncManager:
         未コミットの変更、新規ファイル、および前回同期以降の変更ファイルを取得する。
         """
         changed_files = set()
-        
-        # 1. 未コミットの変更 (Staged + Unstaged)
-        out_unstaged = subprocess.run(["git", "diff", "--name-only"], cwd=self.wiki_dir, capture_output=True, text=True).stdout
-        out_staged = subprocess.run(["git", "diff", "--cached", "--name-only"], cwd=self.wiki_dir, capture_output=True, text=True).stdout
-        
-        # 2. 未追跡ファイル (Untracked)
-        out_untracked = subprocess.run(["git", "ls-files", "--others", "--exclude-standard"], cwd=self.wiki_dir, capture_output=True, text=True).stdout
+        try:
+            # 1. 未コミットの変更 (Staged + Unstaged)
+            diff_index = self.repo.index.diff(None)
+            diff_head = self.repo.index.diff('HEAD')
+            untracked = self.repo.untracked_files
+            
+            # 2. 前回同期以降の変更 (もしハッシュがあれば)
+            last_hash = self._get_last_synced_hash()
+            diff_history = []
+            if last_hash and last_hash != "unknown":
+                try:
+                    diff_history = self.repo.commit(last_hash).diff('HEAD')
+                except Exception as e:
+                    logger.warning(f"Failed to get diff from {last_hash}: {e}")
 
-        # 3. 前回同期以降の変更 (もしハッシュがあれば)
-        last_hash = self._get_last_synced_hash()
-        out_history = ""
-        if last_hash and last_hash != "unknown":
-            out_history = subprocess.run(["git", "diff", "--name-only", last_hash, "HEAD"], cwd=self.wiki_dir, capture_output=True, text=True).stdout
+            # すべての変更されたパスを収集
+            changed_paths = set(untracked)
+            for d in diff_index:
+                if d.b_path: changed_paths.add(d.b_path)
+            for d in diff_head:
+                if d.b_path: changed_paths.add(d.b_path)
+            for d in diff_history:
+                if d.b_path: changed_paths.add(d.b_path)
 
-        for out in [out_unstaged, out_staged, out_untracked, out_history]:
-            for line in out.splitlines():
-                line = line.strip()
-                if not line: continue
-                
-                # パスの解決
-                # 実行ディレクトリ(wiki/など)からの相対パスか、リポジトリルートからのパスかが環境により異なる
-                # ここでは柔軟に判定する
-                if line.startswith("wiki/") or line.startswith("wiki\\"):
-                    full_path = self.wiki_dir.parent / line
-                else:
-                    full_path = self.wiki_dir / line
+            for line in changed_paths:
+                full_path = self.wiki_dir / line
                 
                 if full_path.suffix == ".md" and full_path.exists():
                     # 特殊ファイルは除外
                     if any(x in full_path.name for x in [".md-wiki-sync-state", "Home.md", "log.md"]):
                         continue
                     changed_files.add(full_path.resolve())
+        except Exception as e:
+            logger.error(f"Error getting changed files via GitPython: {e}")
         
         return changed_files
 
@@ -134,24 +134,18 @@ class GitSyncManager:
         指定されたファイルの未コミットの差分を取得する。
         """
         try:
-            # 1. まずはインデックス（staged）との差分を確認
-            res = subprocess.run(
-                ["git", "diff", "HEAD", file_path],
-                cwd=self.wiki_dir, capture_output=True, text=True
-            )
-            diff = res.stdout.strip()
-            if diff:
-                return diff
+            # 1. まずはHEADとの差分を確認
+            diff_text = self.repo.git.diff('HEAD', file_path)
+            if diff_text.strip():
+                return diff_text.strip()
             
             # 2. もし差分がない場合は、新規ファイル（Untracked）か確認
             # (Git管理下になければ diff は空になるため)
-            res = subprocess.run(
-                ["git", "ls-files", "--others", "--exclude-standard", file_path],
-                cwd=self.wiki_dir, capture_output=True, text=True
-            )
-            if res.stdout.strip():
+            if file_path in self.repo.untracked_files:
                 # 新規ファイルの場合は内容をそのまま返す
-                return Path(file_path).read_text(encoding="utf-8")
+                full_path = self.wiki_dir / file_path
+                if full_path.exists():
+                    return full_path.read_text(encoding="utf-8")
                 
             return ""
         except Exception as e:

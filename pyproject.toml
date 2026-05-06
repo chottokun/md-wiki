@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "docling>=2.91.0",
     "fastembed>=0.8.0",
+    "gitpython>=3.1.50",
     "langchain>=1.2.15",
     "langchain-community>=0.4.1",
     "langchain-ollama>=1.1.0",
