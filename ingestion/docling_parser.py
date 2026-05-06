@@ -34,7 +34,14 @@ class DoclingParser:
         pipeline_options.accelerator_options.device = AcceleratorDevice.CPU
         
         self.converter = DocumentConverter(
-            allowed_formats=[InputFormat.PDF, InputFormat.IMAGE, InputFormat.MD],
+            allowed_formats=[
+                InputFormat.PDF, 
+                InputFormat.IMAGE, 
+                InputFormat.MD,
+                InputFormat.DOCX,
+                InputFormat.PPTX,
+                InputFormat.HTML
+            ],
             format_options={
                 InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
             }
