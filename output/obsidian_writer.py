@@ -71,7 +71,7 @@ class ObsidianWriter:
                 if key not in ["tags", "sources", "aliases", "created", "updated"]:
                     base_data[key] = val
 
-        merged_data = self._prepare_metadata(base_data, source_link, raw_link)
+        merged_data = self._prepare_metadata(base_data, source_link, raw_link, page_name)
         logger.info(f"FINAL MERGED TAGS: {merged_data.get('tags')}")
         
         diff_text = self.generate_diff(original_body, proposed_body) if is_update else ""
@@ -90,7 +90,7 @@ class ObsidianWriter:
         logger.info(f"Draft created/updated: {wiki_path}")
         return wiki_path
 
-    def _prepare_metadata(self, base_data: Dict[str, Any], source_link: Optional[str], raw_link: Optional[str]) -> Dict[str, Any]:
+    def _prepare_metadata(self, base_data: Dict[str, Any], source_link: Optional[str], raw_link: Optional[str], page_name: Optional[str] = None) -> Dict[str, Any]:
         """最終的なYAMLメタデータを構築し、Pydanticスキーマで厳密に管理する。"""
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         
@@ -112,11 +112,36 @@ class ObsidianWriter:
             fm.updated = now_str
             fm.type = "wiki"
             
+            # タグとエイリアス内の特殊ハイフン (ノンブレイキングハイフンなど) を標準ハイフンにクレンジング
+            fm.tags = [t.replace('\u2011', '-').replace('\u2010', '-').replace('\uFF0D', '-').strip() for t in fm.tags]
+            fm.tags = [t for t in fm.tags if t]
+            
+            fm.aliases = [a.replace('\u2011', '-').replace('\u2010', '-').replace('\uFF0D', '-').strip() for a in fm.aliases]
+            fm.aliases = [a for a in fm.aliases if a]
+
+            # エイリアスが空の場合、ページ名から年度サフィックスや括弧を除外した自動エイリアスを提案
+            if not fm.aliases and page_name:
+                cleaned_alias = re.sub(r'_\d{4}$', '', page_name)
+                cleaned_alias = re.sub(r'（.*?）$', '', cleaned_alias)
+                cleaned_alias = re.sub(r'\(.*?\)$', '', cleaned_alias)
+                if cleaned_alias != page_name:
+                    fm.aliases.append(cleaned_alias)
+
             # 必須タグの保証
             if "未審査" not in fm.tags:
                 fm.tags.append("未審査")
             fm.tags = sorted(list(set(fm.tags)))
             fm.aliases = sorted(list(set(fm.aliases)))
+
+            # 要約（abstract）のクレンジング：ブロックコールのマークアップや太字記号を除去してプレーンテキストにする
+            if fm.abstract:
+                cleaned = fm.abstract
+                cleaned = re.sub(r'>\s*\[!abstract\]\s*', '', cleaned, flags=re.IGNORECASE)
+                cleaned = re.sub(r'>\s*要約\s*', '', cleaned, flags=re.IGNORECASE)
+                cleaned = re.sub(r'^>\s*', '', cleaned, flags=re.MULTILINE)
+                cleaned = cleaned.replace('**', '').replace('__', '')
+                cleaned = cleaned.strip()
+                fm.abstract = cleaned
 
             return fm.model_dump(exclude_none=True)
         except Exception as e:
@@ -143,11 +168,11 @@ class ObsidianWriter:
 > [!abstract] 要約
 > {data.get('abstract', '')}
 
-## 主要な概念
-{concepts_str}
-
 ## 詳細解説
 {clean_body}
+
+## 💡 主要な概念
+{concepts_str}
 """
         full_content = f"{dump_frontmatter(metadata)}\n\n{final_body}"
         return self.create_draft_file(

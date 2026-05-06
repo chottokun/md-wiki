@@ -31,10 +31,10 @@ def auto_rebuild():
         "from retrieval.qdrant_store import QdrantHybridStore; QdrantHybridStore().delete_collection()"
     ], check=True)
     
-    # 2. Wiki Markdownファイルのリセット
+    # 2. Wiki Markdownファイルのリセット（concepts等のサブディレクトリも対象）
     print("既存のWikiページを削除中...")
-    for p in wiki_dir.glob("*.md"):
-        if p.name not in ["Home.md", "log.md"]:
+    for p in wiki_dir.rglob("*.md"):
+        if p.name not in ["Home.md", "log.md"] and "raw_markdown" not in str(p) and "sources" not in str(p):
             p.unlink()
     
     # 3. 生Markdown抽出データのリセット
@@ -62,6 +62,9 @@ def auto_rebuild():
     # あるいは全てのタグを一括で外すオプションを検討する。
     # ここでは単純に sync を呼ぶが、未審査タグがあるため、インデックスには登録されない。
     subprocess.run(["uv", "run", "python", "main.py", "--sync"], check=True)
+    
+    print("\n🛠️ Wikiの健康診断（Red-linkの自動起票・conceptsページの再構築）を実行中...")
+    subprocess.run(["uv", "run", "python", "main.py", "--lint"], check=True)
 
     print("\n" + "="*50)
     print("✅ 全データのドラフト再構築が完了しました。")

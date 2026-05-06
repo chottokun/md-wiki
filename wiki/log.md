@@ -39,3 +39,24 @@
 - Red-Link (未作成概念) in [[long_rag_paper]]: [[raw_markdown/long_rag_paper_raw.md]]
 - Red-Link (未作成概念) in [[rank_rag_paper]]: [[raw_markdown/rank_rag_paper_raw.md]]
 - Stale Knowledge: [[cot_paper]], [[crag_paper]], [[graph_rag_paper]], [[long_rag_paper]], [[rank_rag_paper]], [[react_paper]], [[self_rag_paper]]
+## [2026-05-06 13:57] ingest | Drafted 修正検索拡張生成_(crag)_2024
+## [2026-05-06 13:59] ingest | Drafted 知識集約型nlpタスクの検索拡張生成_2024
+## [2026-05-06 14:00] ingest | Drafted 自己反省型rag自己学習による検索・生成・批評_2024
+## [2026-05-06 14:02] sync | Performed incremental synchronization.
+## [2026-05-06 14:02] query | Answered: SELF-RAGの自己批評トークン（reflection t...
+## [2026-05-06 14:07] ingest | Drafted 補正検索拡張生成_(crag)_2024
+## [2026-05-06 14:08] ingest | Drafted 知識集約型nlpタスクへのretrieval-augmented_generation_2024
+## [2026-05-06 14:11] ingest | Drafted 修正型取得強化生成_(crag)_の提案と評価_2024
+## [2026-05-06 14:12] ingest | Drafted 検索拡張生成による知識集約型nlpタスク_2024
+## [2026-05-06 14:14] ingest | Drafted 自己反省型検索強化生成(self-rag)_2024
+## [2026-05-06 14:16] sync | Performed incremental synchronization.
+## [2026-05-06 14:20] ingest | Drafted 補正型検索拡張生成_2024
+## [2026-05-06 14:21] ingest | Drafted 検索拡張生成による知識集約型nlpタスク_2024
+## [2026-05-06 14:23] ingest | Drafted 自己反省的rag取得・生成・批評の統合_2024
+## [2026-05-06 14:24] sync | Performed incremental synchronization.
+## [2026-05-06 15:10] ingest | Drafted 補正検索拡張生成_crag_2024
+## [2026-05-06 15:11] ingest | Drafted 知識集約型nlpタスク向けrag_2024
+## [2026-05-06 15:13] ingest | Drafted 自己反省型rag_2024
+## [2026-05-06 15:17] sync | Performed incremental synchronization.
+## [2026-05-06 17:55] sync | Performed incremental synchronization.
+## [2026-05-06 17:55] query | Answered: CRAGにおけるCorrectとIncorrectの違い、お...
