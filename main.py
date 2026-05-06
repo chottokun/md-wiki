@@ -17,35 +17,12 @@ from core.llm_router import router, LLMLayer
 from retrieval.query_engine import WikiQueryEngine
 from langgraph.types import Command
 from core.config import Config
-import git
+from core.git_utils import run_git_commit
 
 # ロギング構成
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("rag-wiki")
 logger.setLevel(logging.INFO)
-
-def run_git_commit(message: str):
-    """
-    Wikiディレクトリ（独立リポジトリ）に対して変更をステージングし、コミットする。
-    
-    Args:
-        message (str): コミットメッセージ。
-    """
-    try:
-        wiki_dir = Config.WIKI_DIR
-        repo = git.Repo(wiki_dir)
-        
-        lock_file = wiki_dir / ".git" / "index.lock"
-        if lock_file.exists():
-            logger.warning(f"Removing stale git lock file: {lock_file}")
-            lock_file.unlink(missing_ok=True)
-            
-        repo.git.add(all=True)
-        if repo.is_dirty() or repo.untracked_files:
-            repo.git.commit("-m", message)
-            print(f"Commit: {message}")
-    except Exception as e:
-        logger.error(f"Wikiへの自動コミットに失敗しました: {e}")
 
 def run_workflow(input_data: Dict[str, Any], auto_approve: bool = False):
     """
