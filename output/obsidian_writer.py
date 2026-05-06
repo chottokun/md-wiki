@@ -14,9 +14,46 @@ from core.schemas import WikiFrontmatterSchema
 logger = logging.getLogger(__name__)
 
 class ObsidianWriter:
-    def __init__(self, wiki_dir: Optional[str] = None):
+    def __init__(self, wiki_dir: Optional[str] = None, staged_dir: Optional[str] = None):
         self.wiki_dir = Path(wiki_dir) if wiki_dir else Config.WIKI_DIR
         self.wiki_dir.mkdir(parents=True, exist_ok=True)
+        self.staged_dir = Path(staged_dir) if staged_dir else Path("_staged")
+        self.staged_dir.mkdir(parents=True, exist_ok=True)
+
+    def approve_update(self, page_name: str) -> bool:
+        """
+        承認されたドラフトを本番のWikiディレクトリに反映し、レビューファイルを削除する。
+        """
+        try:
+            safe_page_name = normalize_term(page_name)
+            staged_path = self.staged_dir / f"{safe_page_name}_review.md"
+            wiki_path = self.wiki_dir / f"{safe_page_name}.md"
+
+            if not staged_path.exists():
+                logger.error(f"承認対象のファイルが見つかりません: {staged_path}")
+                return False
+
+            content = staged_path.read_text(encoding="utf-8")
+
+            # コンテンツの抽出（テストコードの形式に合わせる）
+            # ## Proposed Full Content ... --- の間を抽出
+            pattern = r"## Proposed Full Content\n(.*?)\n---"
+            match = re.search(pattern, content, re.DOTALL)
+            if match:
+                final_content = match.group(1).strip()
+            else:
+                final_content = content.strip()
+
+            # Wikiファイルを更新
+            wiki_path.write_text(final_content, encoding="utf-8")
+
+            # レビュー用一時ファイルを削除（クリーンアップ）
+            staged_path.unlink()
+            logger.info(f"Wikiを更新しました: {wiki_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Wikiの更新反映中にエラーが発生しました: {str(e)}")
+            return False
 
     def generate_diff(self, old_text: str, new_text: str) -> str:
         """単純な行ベースの差分を生成（difflibを使用）"""
