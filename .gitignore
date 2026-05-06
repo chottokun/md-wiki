@@ -40,3 +40,5 @@ docker-compose.override.yml
 Thumbs.db
 
 wiki/
+
+_staged/

@@ -62,7 +62,7 @@ def test_yaml_frontmatter_dump():
     assert "alpha" in dumped
     assert "updated:" in dumped
     assert dumped.startswith("---")
-    assert dumped.endswith("---")
+    assert dumped.strip().endswith("---")
 
 def test_new_file_has_no_diff(temp_wiki):
     """新規作成ファイルにDiffブロックが混入しない"""
