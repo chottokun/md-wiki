@@ -1,4 +1,4 @@
-from typing import Annotated, List, TypedDict, Optional
+from typing import Annotated, List, TypedDict, Optional, Dict, Any
 from langchain_core.documents import Document
 
 def merge_list(left: list, right: list) -> list:
@@ -25,7 +25,10 @@ class AgentState(TypedDict):
     # (リデューサーにより、ノードを通るたびに蓄積される)
     retrieved_docs: Annotated[List[Document], merge_list]
     
-    # LLMによって生成された執筆案、または統合レポートの本文
+    # LLMによって生成された構造化データ (Pydanticモデルのdict形式)
+    proposed_data: Optional[Dict[str, Any]]
+    
+    # LLMによって生成された執筆案（生テキスト版：互換性のため維持）
     proposed_content: Optional[str]
     
     # 最終的な出力先となるWikiページの名前（拡張子なし）
@@ -42,3 +45,6 @@ class AgentState(TypedDict):
     
     # 元のPDF等のソースファイル名（wiki/sourcesへの保存とリンクに使用）
     source_filename: Optional[str]
+    
+    # 変更をファイルに書き込まず、シミュレーションを行うかどうか
+    dry_run: Optional[bool]

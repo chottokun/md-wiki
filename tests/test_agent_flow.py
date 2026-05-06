@@ -39,7 +39,9 @@ class TestAgentFlow(unittest.TestCase):
         # 中断されていることを確認
         state = app.get_state(self.config)
         self.assertEqual(state.next, ("review",)) # 中断されたノードが次に実行予定となる
-        self.assertIn("integration_test_review.md", [f.name for f in self.staged_dir.iterdir()])
+        # ファイル名はAIが提案するため、何らかの _review.md が存在することを確認
+        staged_files = [f.name for f in self.staged_dir.glob("*_review.md")]
+        self.assertTrue(len(staged_files) > 0, "No review file found in _staged directory.")
 
         # 2. 人間が 'approve' を送る（再開）
         # Command(resume="approve") を使用して再開

@@ -15,15 +15,15 @@ uv.lock
 # --- Project Temporary Data (Do not push) ---
 _raw/*
 !_raw/.gitkeep
-_staged/*
-!_staged/.gitkeep
+qdrant_data/
 
 # --- Wiki Sources (PDFs) & Raw Markdown (Extracted Text) ---
-# これらの原始資料はサイズが大きく、機密性が高いためGit管理から除外
-wiki/sources/*
-!wiki/sources/.gitkeep
-wiki/raw_markdown/*
-!wiki/raw_markdown/.gitkeep
+# これら�E一次惁E��はサイズが大きく、機寁E��が高いためGit管琁E��ら除夁E
+# 概念ペ�EジはLintで自動�E生�E可能なため除夁E
+
+# --- Docling / Conversion Cache ---
+docling_output/
+*.docling_cache
 
 # --- Large Binaries & Apps ---
 *.AppImage
@@ -31,7 +31,14 @@ wiki/raw_markdown/*
 *.deb
 data/
 docker-compose.override.yml
+
+# --- Editor & OS ---
 .vscode/
 .idea/
 .DS_Store
 *.swp
+Thumbs.db
+
+wiki/
+
+_staged/

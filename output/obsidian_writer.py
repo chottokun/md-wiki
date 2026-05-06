@@ -1,243 +1,203 @@
-import difflib
+import os
+import re
+import yaml
+import shutil
 import logging
+from typing import Dict, Any, Optional, List
 from pathlib import Path
-from typing import Optional, Dict, List
+from datetime import datetime
+from core.utils import normalize_term, parse_frontmatter, dump_frontmatter
 
-# ロギング設定
+from core.schemas import WikiFrontmatterSchema
+
 logger = logging.getLogger(__name__)
 
 class ObsidianWriter:
-    """
-    Wikiの更新案を作成し、Obsidianでレビュー可能な形式で出力・管理するクラス。
-    
-    役割:
-    1. 既存Wikiと新提案の差分（Unified Diff）を生成。
-    2. Obsidianのコールアウト機能を用いたレビュー用ファイルの作成。
-    3. 承認後のWiki反映とQdrant同期のトリガー。
-    4. Git履歴を解析したナレッジ活動状況（Hot/Stale）の抽出。
-    5. 全ページを統合するインデックス (Home.md) と活動記録 (log.md) の保守。
-    """
-    
-    def __init__(self, wiki_dir: str = "wiki", staged_dir: str = "_staged"):
-        """
-        ObsidianWriterを初期化する。
-        
-        Args:
-            wiki_dir (str): Wikiデータ（Obsidian Vault）のルートディレクトリ。
-            staged_dir (str): レビュー待ちファイルを保存するディレクトリ。
-        """
+    def __init__(self, wiki_dir: str = "wiki"):
         self.wiki_dir = Path(wiki_dir)
-        self.staged_dir = Path(staged_dir)
         self.wiki_dir.mkdir(parents=True, exist_ok=True)
-        self.staged_dir.mkdir(parents=True, exist_ok=True)
 
-    def generate_diff(self, original: str, proposed: str) -> str:
+    def generate_diff(self, old_text: str, new_text: str) -> str:
+        """単純な行ベースの差分を生成（difflibを使用）"""
+        import difflib
+        old_lines = old_text.splitlines()
+        new_lines = new_text.splitlines()
+        diff = difflib.unified_diff(old_lines, new_lines, lineterm="")
+        return "\n".join(list(diff)[2:]) # ヘッダーを除去
+
+    def create_draft_file(self, page_name: str, proposed_content: str, 
+                         source_filename: Optional[str] = None, 
+                         source_path: Optional[str] = None,
+                         raw_markdown: Optional[str] = None,
+                         sub_dir: Optional[str] = None) -> Path:
         """
-        2つのテキスト間の差分（Unified Diff形式）を生成する。
+        レビュー用のファイルを wiki/ (または sub_dir) に作成する。
+        """
+        safe_page_name = normalize_term(page_name)
+        target_dir = self.wiki_dir / sub_dir if sub_dir else self.wiki_dir
+        target_dir.mkdir(parents=True, exist_ok=True)
+        filename = safe_page_name if safe_page_name.endswith(".md") else f"{safe_page_name}.md"
+        wiki_path = target_dir / filename
         
-        Args:
-            original (str): 既存のコンテンツ。
-            proposed (str): 新しく提案されたコンテンツ。
+        source_link = self._handle_source_file(source_filename, source_path) if source_filename else None
+        raw_link = self._handle_raw_markdown(safe_page_name, raw_markdown) if raw_markdown else None
+
+        existing_data = None
+        original_body = ""
+        is_update = wiki_path.exists()
+        if is_update:
+            existing_data, original_body = parse_frontmatter(wiki_path.read_text(encoding="utf-8"))
+
+        # 新しいコンテンツのパース
+        proposed_data, proposed_body = parse_frontmatter(proposed_content)
+        
+        # クレンジング
+        proposed_body = re.sub(r'^```(?:markdown|md)?\s*\n', '', proposed_body.strip())
+        proposed_body = re.sub(r'\n```\s*$', '', proposed_body.strip())
+
+        # メタデータのマージ
+        base_data = existing_data if existing_data else {}
+        if proposed_data:
+            for key in ["tags", "sources", "aliases"]:
+                p_val = proposed_data.get(key, [])
+                if isinstance(p_val, str): p_val = [p_val]
+                e_val = base_data.get(key, [])
+                if isinstance(e_val, str): e_val = [e_val]
+                combined = list(set([v for v in (e_val + p_val) if v]))
+                if combined: base_data[key] = combined
             
-        Returns:
-            str: 生成された差分テキスト。
-        """
-        diff = difflib.unified_diff(
-            original.splitlines(keepends=True),
-            proposed.splitlines(keepends=True),
-            fromfile="既存のWiki (Existing Wiki)",
-            tofile="新提案 (Proposed Update)"
-        )
-        return "".join(diff)
+            for key, val in proposed_data.items():
+                if key not in ["tags", "sources", "aliases", "created", "updated"]:
+                    base_data[key] = val
 
-    def create_review_file(self, page_name: str, proposed_content: str) -> Path:
-        """
-        レビュー用のファイルを _staged/ に作成する。
-        既存ファイルがある場合は差分を含め、Obsidianのコールアウトで強調表示する。
+        merged_data = self._prepare_metadata(base_data, source_link, raw_link)
+        logger.info(f"FINAL MERGED TAGS: {merged_data.get('tags')}")
         
-        Args:
-            page_name (str): 対象のWikiページ名。
-            proposed_content (str): AIが生成した新コンテンツ案。
-            
-        Returns:
-            Path: 生成されたレビューファイルのパス。
-        """
-        wiki_path = self.wiki_dir / f"{page_name}.md"
-        staged_path = self.staged_dir / f"{page_name}_review.md"
+        diff_text = self.generate_diff(original_body, proposed_body) if is_update else ""
+        diff_section = f"\n> [!info] AIからの更新提案\n> ```diff\n{diff_text}\n> ```\n" if (is_update and diff_text) else ""
+
+        final_fm = dump_frontmatter(merged_data)
+        footer = self._generate_footer(source_link, raw_link)
         
-        original_content = ""
-        if wiki_path.exists():
-            original_content = wiki_path.read_text(encoding="utf-8")
-
-        diff_text = self.generate_diff(original_content, proposed_content)
+        body_content = proposed_body.strip()
+        if not body_content.startswith("# "):
+            body_content = f"# {page_name}\n\n{body_content}"
         
-        # レビュー用Markdownの構成
-        review_md = f"""---
-page: "{page_name}"
-status: "pending_review"
----
-
-# Wiki Update Review: {page_name}
-
-> [!info] 提案された変更
-> 以下の差分を確認してください。
-> 承認する場合はCLI上で `a` を入力するか、`-y` フラグを使用してください。
-
-## 差分 (Diff)
-```diff
-{diff_text if diff_text else "変更なし (新規作成ページ)"}
-```
-
-## Proposed Full Content
-{proposed_content}
-
----
-## Agent Metadata (Do not delete)
-<!-- ID: {page_name} -->
-"""
-        staged_path.write_text(review_md, encoding="utf-8")
-        logger.info(f"レビューファイルを作成しました: {staged_path}")
-        return staged_path
-
-    def approve_update(self, page_name: str) -> bool:
-        """
-        レビュー案を承認し、正式なWikiページとして反映する。
+        final_content = f"{final_fm}\n\n{diff_section}\n{body_content}\n{footer}"
+        wiki_path.write_text(final_content.strip(), encoding="utf-8")
         
-        Args:
-            page_name (str): 承認対象のページ名。
-            
-        Returns:
-            bool: 成功した場合はTrue。
-        """
-        staged_path = self.staged_dir / f"{page_name}_review.md"
-        wiki_path = self.wiki_dir / f"{page_name}.md"
-        
-        if not staged_path.exists():
-            logger.error(f"承認対象のレビューファイルが見つかりません: {staged_path}")
-            return False
+        logger.info(f"Draft created/updated: {wiki_path}")
+        return wiki_path
 
+    def _prepare_metadata(self, base_data: Dict[str, Any], source_link: Optional[str], raw_link: Optional[str]) -> Dict[str, Any]:
+        """最終的なYAMLメタデータを構築し、Pydanticスキーマで厳密に管理する。"""
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        
+        # 既存/新規データを統合
+        merged_dict = base_data.copy()
+        
+        # リンク情報の統合
+        sources = merged_dict.get("sources", [])
+        if source_link: sources.append(source_link)
+        merged_dict["sources"] = sorted(list(set(sources)))
+
+        # スキーマによるバリデーションとデフォルト値適用
         try:
-            content = staged_path.read_text(encoding="utf-8")
+            # Pydantic スキーマでパース & 正規化
+            fm = WikiFrontmatterSchema.model_validate(merged_dict)
             
-            # 本文のみを抽出するロジック
-            parts = content.split("## Proposed Full Content\n")
-            if len(parts) < 2:
-                logger.error("レビューファイル内に提案内容が見つかりません。")
-                return False
+            # 日付とタイプの強制設定
+            if not fm.created: fm.created = now_str
+            fm.updated = now_str
+            fm.type = "wiki"
             
-            # メタデータ識別子までを取得
-            final_content = parts[1].split("\n---\n## Agent Metadata (Do not delete)")[0].strip()
+            # 必須タグの保証
+            if "未審査" not in fm.tags:
+                fm.tags.append("未審査")
+            fm.tags = sorted(list(set(fm.tags)))
+            fm.aliases = sorted(list(set(fm.aliases)))
 
-            # 正式なWikiページとして保存
-            wiki_path.write_text(final_content, encoding="utf-8")
-            
-            # レビュー用一時ファイルを削除（クリーンアップ）
-            staged_path.unlink()
-            logger.info(f"Wikiを更新しました: {wiki_path}")
-            return True
+            return fm.model_dump(exclude_none=True)
         except Exception as e:
-            logger.error(f"Wikiの更新反映中にエラーが発生しました: {str(e)}")
-            return False
+            logger.error(f"Metadata validation error: {e}")
+            # フォールバック: 辞書型で継続（ただし警告）
+            merged_dict["updated"] = now_str
+            return merged_dict
+
+    def create_draft_from_schema(self, data: Dict[str, Any], sub_dir: Optional[str] = None) -> Path:
+        page_name = data.get("title", "Untitled")
+        proposed_body = data.get("body", "")
+        nested_data, clean_body = parse_frontmatter(proposed_body)
+        
+        metadata = {
+            "tags": list(set(data.get("tags", []) + (nested_data.get("tags", []) if nested_data else []))),
+            "aliases": list(set(data.get("aliases", []) + (nested_data.get("aliases", []) if nested_data else []))),
+            "sources": list(set(data.get("sources", []) + (nested_data.get("sources", []) if nested_data else []))),
+            "abstract": data.get("abstract", "")
+        }
+        
+        concepts_str = "\n".join([f"- {c}" for c in data.get("concepts", [])])
+        final_body = f"""# {page_name}
+
+> [!abstract] 要約
+> {data.get('abstract', '')}
+
+## 主要な概念
+{concepts_str}
+
+## 詳細解説
+{clean_body}
+"""
+        full_content = f"{dump_frontmatter(metadata)}\n\n{final_body}"
+        return self.create_draft_file(
+            page_name, 
+            full_content, 
+            source_filename=data.get("source_filename"),
+            source_path=data.get("source_path"),
+            raw_markdown=data.get("raw_markdown"),
+            sub_dir=sub_dir
+        )
+
+    def _handle_source_file(self, filename: Optional[str], source_path: Optional[str] = None) -> Optional[str]:
+        if not filename: return None
+        sources_dir = self.wiki_dir / "sources"
+        sources_dir.mkdir(exist_ok=True)
+        
+        # まず指定されたパス（source_path）を試す
+        src = Path(source_path) if source_path else Path("_raw") / filename
+        if not src.exists():
+            # 見つからなければデフォルトの _raw を試す
+            src = Path("_raw") / filename
+            
+        if src.exists():
+            shutil.copy2(src, sources_dir / filename)
+        return f"[[sources/{filename}]]"
+
+    def _handle_raw_markdown(self, name: str, content: Optional[str]) -> Optional[str]:
+        if not content: return None
+        raw_dir = self.wiki_dir / "raw_markdown"
+        raw_dir.mkdir(exist_ok=True)
+        raw_path = raw_dir / f"{name}.md"
+        raw_path.write_text(content, encoding="utf-8")
+        return f"[[raw_markdown/{name}]]"
+
+    def _generate_footer(self, source_link: Optional[str], raw_link: Optional[str]) -> str:
+        footer = "\n\n---\n## 🔗 リソース\n"
+        if source_link: footer += f"- **Original Source**: {source_link}\n"
+        if raw_link: footer += f"- **Raw Markdown**: {raw_link}\n"
+        return footer
 
     def add_log_entry(self, activity_type: str, details: str):
-        """
-        時系列ログ (log.md) に新しいアクティビティを記録する。
-        
-        Args:
-            activity_type (str): アクティビティの種類 (ingest, query, lint, maintenance)。
-            details (str): 詳細内容。
-        """
-        from datetime import datetime
         log_path = self.wiki_dir / "log.md"
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-        
         entry = f"## [{timestamp}] {activity_type} | {details}\n"
-        
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(entry)
-        logger.info(f"活動をログに記録しました: {activity_type}")
-
-    def get_page_activity(self) -> Dict[str, List[str]]:
-        """
-        Gitの履歴を解析し、最近活発なページ(Hot)と、長期間更新がないページ(Stale)を特定する。
-        
-        Returns:
-            Dict[str, List[str]]: {"hot": [...], "stale": [...]}
-        """
-        import subprocess
-        from collections import Counter
-        activity = {"hot": [], "stale": []}
-        
-        try:
-            # 1. 最近1ヶ月で更新頻度が高い上位5件を取得 (Hot)
-            res = subprocess.run(
-                ["git", "log", "--since='1 month ago'", "--name-only", "--pretty=format:"],
-                cwd=self.wiki_dir, capture_output=True, text=True
-            )
-            files = [line.strip() for line in res.stdout.split("\n") 
-                     if line.endswith(".md") and line not in ["Home.md", "log.md"]]
-            hot_files = [f.replace(".md", "") for f, count in Counter(files).most_common(5)]
-            activity["hot"] = hot_files
-
-            # 2. 3ヶ月以上更新がない「放置された」ページを特定 (Stale)
-            all_pages = {p.stem for p in self.wiki_dir.glob("*.md") 
-                         if p.name not in ["Home.md", "log.md"]}
-            res_recent = subprocess.run(
-                ["git", "log", "--since='3 months ago'", "--name-only", "--pretty=format:"],
-                cwd=self.wiki_dir, capture_output=True, text=True
-            )
-            recent_files = {line.strip().replace(".md", "") 
-                            for line in res_recent.stdout.split("\n") if line.endswith(".md")}
-            activity["stale"] = sorted(list(all_pages - recent_files))
-            
-        except Exception as e:
-            logger.error(f"Git履歴の解析中にエラーが発生しました: {e}")
-        return activity
 
     def update_index(self):
-        """
-        Wiki内の全ファイルをスキャンし、インデックスページ (Home.md) を自動再構成する。
-        各ページのタグ情報を収集し、カテゴリ別に整理する。
-        """
-        pages = list(self.wiki_dir.glob("*.md"))
-        pages = [p for p in pages if p.name not in ["Home.md", "log.md"]]
-        
-        tag_map = {}
-        page_list = []
-        
-        for p in pages:
-            try:
-                # ページを読み込み、タグ（#Tag_Name）を簡易抽出
-                content = p.read_text(encoding="utf-8")
-                # リンクとして機能させるためスペースを考慮
-                tags = [word for word in content.replace("\n", " ").split() 
-                        if word.startswith("#") and len(word) > 1]
-                
-                page_list.append(f"- [[{p.stem}]]")
-                for tag in tags:
-                    tag_map.setdefault(tag, []).append(f"[[{p.stem}]]")
-            except Exception:
-                continue
-
-        # タグセクションの生成
-        tag_section_parts = []
-        for tag in sorted(tag_map.keys()):
-            p_list = sorted(list(set(tag_map[tag])))
-            tag_section_parts.append(f"### {tag}\n" + "\n".join([f"- {p}" for p in p_list]))
-        
-        tag_section = "\n\n".join(tag_section_parts)
-        
-        # Home.md の構築
-        index_md = f"""# 🏠 RAG-Wiki Home
-
-## 📚 全ページ
-{chr(10).join(sorted(page_list))}
-
-## 🏷️ タグ別
-{tag_section}
-
----
-*Generated by RAG-Wiki Agent. Last updated: {Path(self.wiki_dir).stat().st_mtime}*
-"""
+        pages = [p for p in self.wiki_dir.rglob("*.md") 
+                 if p.name not in ["Home.md", "log.md"] and "raw_markdown" not in str(p) and "sources" not in str(p)]
+        page_list = [f"- [[{p.stem}]]" for p in sorted(pages)]
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        index_md = f"# 🏠 RAG-Wiki Home\n\n## 📚 全ページ\n" + "\n".join(page_list) + f"\n\n---\n*Updated: {now_str}*"
         (self.wiki_dir / "Home.md").write_text(index_md, encoding="utf-8")
-        logger.info("Wikiインデックス (Home.md) を更新しました。")

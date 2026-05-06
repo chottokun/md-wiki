@@ -3,14 +3,22 @@ import uuid
 import logging
 import argparse
 import subprocess
+import os
 from pathlib import Path
 from typing import Dict, Any
+
+if sys.platform == "win32":
+    # 標準出力と標準エラーを UTF-8 に強制
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 from agent.graph import app, qdrant_store
 from core.llm_router import router, LLMLayer
+from retrieval.query_engine import WikiQueryEngine
 from langgraph.types import Command
 
 # ロギング構成
-logging.basicConfig(level=logging.WARNING)
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("rag-wiki")
 logger.setLevel(logging.INFO)
 
@@ -29,7 +37,7 @@ def run_git_commit(message: str):
         result = subprocess.run(["git", "diff", "--staged", "--quiet"], capture_output=True, cwd=wiki_dir)
         if result.returncode != 0:
             subprocess.run(["git", "commit", "-m", message], check=True, capture_output=True, cwd=wiki_dir)
-            print(f"📦 Wiki Git Commit: {message}")
+            print(f"Commit: {message}")
     except Exception as e:
         logger.error(f"Wikiへの自動コミットに失敗しました: {e}")
 
@@ -45,7 +53,7 @@ def run_workflow(input_data: Dict[str, Any], auto_approve: bool = False):
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
     
-    print(f"\n🚀 ワークフローを開始します...")
+    print(f"\n[Workflow] Starting...")
 
     current_state = None
     # ワークフローのストリーミング実行
@@ -55,82 +63,33 @@ def run_workflow(input_data: Dict[str, Any], auto_approve: bool = False):
         if status:
             print(f"  [進捗]: {status}")
 
-    # 実行が停止（interrupt）しているか確認
-    snapshot = app.get_state(config)
-    if snapshot.next and "review" in snapshot.next[0]:
-        if auto_approve:
-            choice = 'a'
-            print("\n🤖 自動承認モード (-y) で継続します...")
-        else:
-            print(f"\n📝 レビューが必要です。 _staged/ ディレクトリのファイルを確認してください。")
-            choice = input("\nアクションを選択してください [a]承認(approve) / [r]却下(reject) / [q]終了(quit): ").lower()
+    print("Done: Workflow finished.")
+    if current_state and "target_page" in current_state:
+        from output.obsidian_writer import ObsidianWriter
+        writer = ObsidianWriter()
+        writer.update_index()
+        log_type = "maintenance" if "maintenance_topic" in input_data else "ingest"
+        writer.add_log_entry(log_type, f"Drafted {current_state['target_page']}")
+        run_git_commit(f"Auto-draft: {current_state['target_page']}")
+        print(f"Info: Check [[{current_state['target_page']}]] in Obsidian and edit/remove tags.")
 
-        if choice == 'a':
-            print("✅ 承認されました。Wikiへ反映中...")
-            # Command(resume=...) を使って停止したノードを再開させる
-            for event in app.stream(Command(resume="approve"), config, stream_mode="values"):
-                current_state = event # 最終状態を更新
-                print(f"  [進捗]: {event.get('status')}")
-            
-            # 反映後の後処理：インデックス更新、ログ記録、Gitコミット
-            from output.obsidian_writer import ObsidianWriter
-            writer = ObsidianWriter()
-            writer.update_index()
-            # メンテナンスモードとインジェストモードでログ種別を分ける
-            log_type = "maintenance" if "maintenance_topic" in input_data else "ingest"
-            writer.add_log_entry(log_type, f"Updated {current_state['target_page']}")
-            run_git_commit(f"Auto-update: {current_state['target_page']}")
-        else:
-            print("操作はキャンセルされました。")
+import re
 
 def run_query(query: str):
     """
-    Wikiの知識（整理済みページ + 原始資料）を横断検索し、回答を生成する。
-    
-    Args:
-        query (str): ユーザーからの質問。
+    Wikiの知識（整理済みページ + 一次情報）を横断検索し、さらにリンク関係を辿って回答を生成する。
     """
-    print(f"\n🔍 ナレッジベースを検索中: '{query}'")
-    # Qdrantから関連チャンクを取得
-    docs = qdrant_store.search(query, k=8)
+    print(f"\n[Search] Searching knowledge base for: '{query}'")
     
-    # AIが情報の性質を理解できるようコンテキストを構造化
-    context_parts = []
-    for d in docs:
-        dtype = d.metadata.get("type", "unknown")
-        source = d.metadata.get("source", "unknown")
-        prefix = "📄 [Wiki Page]" if dtype == "wiki_page" else "原始資料 [Raw Source]"
-        context_parts.append(f"{prefix} Source: {source}\n{d.page_content}")
-    
-    context = "\n\n---\n\n".join(context_parts)
-    
-    # LLMの取得と言語指示の生成
-    llm = router.get_model(LLMLayer.L2)
-    lang_inst = router.get_language_instruction()
-    
-    prompt = f"""あなたはWikiのナレッジアシスタントです。{lang_inst}
-以下のWikiページ（整理済み）と原始資料（生データ）を参考にして、質問に答えてください。
-
-## コンテキスト
-{context}
-
-## 質問: {query}
-
-## 指示:
-- {lang_inst}
-- Wikiページに概要がある場合はそれを活用し、細かい数値や事実は原始資料から補完してください。
-- 根拠となった情報の出典を必ず [[ページ名]] または [[sources/PDF名]] 形式で明記してください。
-- 外部の知識は絶対に混ぜないでください。
-
-回答:"""
-
-    response = llm.invoke(prompt)
+    # WikiQueryEngine を使用して回答を生成
+    engine = WikiQueryEngine(qdrant_store, router)
+    answer = engine.query(query)
     
     # 質問への回答活動をログに記録
     from output.obsidian_writer import ObsidianWriter
     ObsidianWriter().add_log_entry("query", f"Answered: {query[:30]}...")
     
-    print("\n" + "="*50 + "\n" + response.content + "\n" + "="*50 + "\n")
+    print("\n" + "="*50 + "\n" + answer + "\n" + "="*50 + "\n")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="RAG-Wiki 統合CLI")
@@ -139,30 +98,78 @@ if __name__ == "__main__":
     parser.add_argument("--maintenance", "-m", action="store_true", help="メンテナンス（景観要約）モードを実行")
     parser.add_argument("--lint", "-l", action="store_true", help="Wikiの健康診断（リンク切れ・風化チェック）を実行")
     parser.add_argument("--sync", "-s", action="store_true", help="Wikiファイルを正としてQdrantを再構築（同期）する")
+    parser.add_argument("--refine", "-r", action="store_true", help="手動編集したWikiページをAIエディターで洗練させる")
     parser.add_argument("--yes", "-y", action="store_true", help="確認プロンプトをスキップして自動承認する")
+    parser.add_argument("--force", "-f", action="store_true", help="未審査タグを無視して同期する")
+    parser.add_argument("--dry-run", action="store_true", help="ファイルへの書き込みを行わず、変更内容をログに出力する")
     
     args = parser.parse_args()
     
     # モードに応じたエントリーポイントの選択
-    if args.query:
-        if not args.input:
-            print("質問内容を入力してください。")
+    try:
+        if args.query:
+            if not args.input:
+                print("質問内容を入力してください。")
+            else:
+                run_query(args.input)
+        elif args.refine:
+            if not args.input:
+                print("洗練対象のWikiページ名（またはファイルパス）を入力してください。")
+            else:
+                from retrieval.sync_manager import GitSyncManager
+                mgr = GitSyncManager(qdrant_store)
+                filename = args.input if args.input.endswith(".md") else f"{args.input}.md"
+                full_path = Path("wiki") / filename
+                
+                if not full_path.exists():
+                    print(f"Error: {full_path} does not exist.")
+                else:
+                    content = full_path.read_text(encoding="utf-8")
+                    if "<<<<<<<" in content:
+                        print("🚨 衝突マーカーを検知しました。コンフリクト解決モードで開始します。")
+                        run_workflow({
+                            "status": "starting_conflict",
+                            "target_page": full_path.stem,
+                            "raw_markdown": content
+                        }, auto_approve=args.yes)
+                    else:
+                        # git diff を取得するために、wikiリポジトリ内での相対パスを渡す
+                        # full_path.name だけだとサブディレクトリに対応できないため、
+                        # wiki/ からの相対パスを計算する
+                        rel_path = full_path.relative_to(Path("wiki"))
+                        diff = mgr.get_unstaged_diff(str(rel_path))
+                        
+                        # 差分がない場合、または新規ファイルの場合は、ファイル全体を対象にする
+                        if not diff:
+                            logger.info("未コミットの差分が見つからないため、ファイル全体を対象に洗練を実行します。")
+                            diff = content
+
+                        run_workflow({
+                            "status": "starting_refine",
+                            "target_page": full_path.stem,
+                            "raw_markdown": diff
+                        }, auto_approve=args.yes)
+        elif args.sync:
+            print("\n[Sync] Synchronizing Qdrant index and Git...")
+            print("Note: Files with '#未審査' tag will be skipped.")
+            from retrieval.sync_manager import GitSyncManager
+            sync_mgr = GitSyncManager(qdrant_store)
+            sync_mgr.perform_incremental_sync(include_unreviewed=args.force)
+            from output.obsidian_writer import ObsidianWriter
+            ObsidianWriter().add_log_entry("sync", "Performed incremental synchronization.")
+            run_git_commit("Auto-sync: User triggered manual sync.")
+            print("Done: Synchronization complete.")
+        elif args.lint:
+            run_workflow({"status": "starting_lint", "dry_run": args.dry_run})
+        elif args.maintenance:
+            if not args.input:
+                print("統合対象のトピック名を入力してください。")
+            else:
+                run_workflow({"maintenance_topic": args.input}, auto_approve=args.yes)
+        elif args.input:
+            run_workflow({"input_file": args.input}, auto_approve=args.yes)
         else:
-            run_query(args.input)
-    elif args.sync:
-        print("\n🔄 QdrantインデックスをWikiファイルから再構築しています...")
-        qdrant_store.sync_from_disk()
-        from output.obsidian_writer import ObsidianWriter
-        ObsidianWriter().add_log_entry("sync", "Rebuilt Qdrant index from Wiki files.")
-        print("✅ 同期が完了しました。")
-    elif args.lint:
-        run_workflow({"status": "starting_lint"})
-    elif args.maintenance:
-        if not args.input:
-            print("統合対象のトピック名を入力してください。")
-        else:
-            run_workflow({"maintenance_topic": args.input}, auto_approve=args.yes)
-    elif args.input:
-        run_workflow({"input_file": args.input}, auto_approve=args.yes)
-    else:
-        parser.print_help()
+            parser.print_help()
+    finally:
+        if 'qdrant_store' in globals():
+            qdrant_store.close()

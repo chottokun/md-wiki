@@ -1,4 +1,5 @@
 import subprocess
+import os
 from pathlib import Path
 
 def auto_rebuild():
@@ -43,23 +44,29 @@ def auto_rebuild():
         for p in raw_md_dir.glob("*.md"):
             p.unlink()
     
-    # 4. Ollama のリフレッシュ
-    print("Ollamaコンテナを再起動してGPUメモリを解放中...")
-    subprocess.run(["docker", "restart", "ollama"], check=True)
+    # 4. インフラの確認
+    mode = os.getenv("QDRANT_MODE", "local")
+    print(f"現在のモード: {mode}")
     
     print(f"\n再構築対象のPDFを {len(pdfs)} 件検出しました。")
     
     # 5. バッチ・インジェストの実行
     for pdf in pdfs:
         print(f"\n🚀 再構成プロセス開始: {pdf.name}")
-        # -y フラグにより、人間によるレビューをスキップして全自動で構築
-        subprocess.run(["uv", "run", "python", "main.py", "-y", str(pdf)], check=True)
+        # インジェストを実行（ドラフトと未審査タグの作成）
+        subprocess.run(["uv", "run", "python", "main.py", str(pdf)], check=True)
     
+    print("\n🔄 Qdrantインデックスを同期中...")
+    # 注意: ここでは自動的に同期させたい場合、タグを外す処理が必要だが、
+    # ユーザーの意向（Obsidianでのレビュー）を尊重し、ここでは「同期」コマンドの紹介に留めるか、
+    # あるいは全てのタグを一括で外すオプションを検討する。
+    # ここでは単純に sync を呼ぶが、未審査タグがあるため、インデックスには登録されない。
+    subprocess.run(["uv", "run", "python", "main.py", "--sync"], check=True)
+
     print("\n" + "="*50)
-    print("✅ 全データの再構築が完了しました。")
-    print("   - ハイブリッド・インデックス (Raw + Wiki) 構築済み")
-    print("   - タグ形式の修正適用済み")
-    print("   - 原始資料 (PDF/Raw MD) リンク完了")
+    print("✅ 全データのドラフト再構築が完了しました。")
+    print("   - Wiki内に '#未審査' タグ付きで全ページが生成されました。")
+    print("   - Obsidianで内容を確認後、タグを削除して `main.py --sync` を実行してください。")
     print("="*50 + "\n")
 
 if __name__ == "__main__":
