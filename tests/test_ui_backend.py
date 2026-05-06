@@ -2,7 +2,21 @@ import unittest
 import os
 import shutil
 from pathlib import Path
-from output.obsidian_writer import ObsidianWriter
+# No more sys.modules hacking here if not absolutely necessary,
+# but we still need to mock dependencies that are imported at module level in obsidian_writer
+# if they are not available in the environment.
+
+try:
+    from output.obsidian_writer import ObsidianWriter
+except ImportError:
+    import sys
+    from unittest.mock import MagicMock
+    sys.modules['core.config'] = MagicMock()
+    sys.modules['core.schemas'] = MagicMock()
+    mock_utils = MagicMock()
+    mock_utils.normalize_term.side_effect = lambda x: x
+    sys.modules['core.utils'] = mock_utils
+    from output.obsidian_writer import ObsidianWriter
 
 class TestUIBackend(unittest.TestCase):
     def setUp(self):
