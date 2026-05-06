@@ -13,6 +13,9 @@ from core.schemas import WikiFrontmatterSchema
 
 logger = logging.getLogger(__name__)
 
+# タグ抽出用の正規表現 (Obsidianのネストされたタグやハイフンも考慮)
+TAG_PATTERN = re.compile(r'#[\w/-]+')
+
 class ObsidianWriter:
     def __init__(self, wiki_dir: Optional[str] = None):
         self.wiki_dir = Path(wiki_dir) if wiki_dir else Config.WIKI_DIR
@@ -221,9 +224,22 @@ class ObsidianWriter:
             f.write(entry)
 
     def update_index(self):
-        pages = [p for p in self.wiki_dir.rglob("*.md") 
-                 if p.name not in ["Home.md", "log.md"] and "raw_markdown" not in str(p) and "sources" not in str(p)]
-        page_list = [f"- [[{p.stem}]]" for p in sorted(pages)]
+        pages = sorted([p for p in self.wiki_dir.rglob("*.md")
+                 if p.name not in ["Home.md", "log.md"] and "raw_markdown" not in str(p) and "sources" not in str(p)])
+
+        page_list = []
+        for p in pages:
+            try:
+                # ページを読み込み、タグ（#Tag_Name）を簡易抽出
+                content = p.read_text(encoding="utf-8")
+                # TAG_PATTERN を使用して効率的にタグを抽出
+                tags = TAG_PATTERN.findall(content)
+                tag_str = f" {' '.join(tags)}" if tags else ""
+                page_list.append(f"- [[{p.stem}]]{tag_str}")
+            except Exception as e:
+                logger.error(f"Error reading {p} for index: {e}")
+                page_list.append(f"- [[{p.stem}]]")
+
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         index_md = f"# 🏠 RAG-Wiki Home\n\n## 📚 全ページ\n" + "\n".join(page_list) + f"\n\n---\n*Updated: {now_str}*"
         (self.wiki_dir / "Home.md").write_text(index_md, encoding="utf-8")
