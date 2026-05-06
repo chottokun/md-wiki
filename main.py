@@ -2,9 +2,6 @@ import sys
 import uuid
 import logging
 import argparse
-import subprocess
-import os
-from pathlib import Path
 from typing import Dict, Any
 
 if sys.platform == "win32":
@@ -13,9 +10,8 @@ if sys.platform == "win32":
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
         sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 from agent.graph import app, qdrant_store
-from core.llm_router import router, LLMLayer
+from core.llm_router import router
 from retrieval.query_engine import WikiQueryEngine
-from langgraph.types import Command
 from core.config import Config
 import git
 
@@ -78,8 +74,6 @@ def run_workflow(input_data: Dict[str, Any], auto_approve: bool = False):
         writer.add_log_entry(log_type, f"Drafted {current_state['target_page']}")
         run_git_commit(f"Auto-draft: {current_state['target_page']}")
         print(f"Info: Check [[{current_state['target_page']}]] in Obsidian and edit/remove tags.")
-
-import re
 
 def run_query(query: str):
     """
