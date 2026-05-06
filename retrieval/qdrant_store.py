@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_qdrant import QdrantVectorStore, RetrievalMode, FastEmbedSparse
 from langchain_ollama import OllamaEmbeddings
 from qdrant_client import QdrantClient
@@ -51,6 +52,12 @@ class QdrantHybridStore:
             retrieval_mode=RetrievalMode.HYBRID,
         )
 
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=int(os.getenv("CHUNK_SIZE", "400")),
+            chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "50")),
+            separators=["\n\n", "\n", "。", "、", " ", ""]
+        )
+
     def _ensure_collection(self):
         """コレクションが存在しない場合は作成する。"""
         if not self.client.collection_exists(self.collection_name):
@@ -67,17 +74,7 @@ class QdrantHybridStore:
             )
 
     def add_text(self, text: str, metadata: Dict[str, Any]):
-        from langchain_text_splitters import RecursiveCharacterTextSplitter
-        chunk_size = int(os.getenv("CHUNK_SIZE", "400"))
-        chunk_overlap = int(os.getenv("CHUNK_OVERLAP", "50"))
-        
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            separators=["\n\n", "\n", "。", "、", " ", ""]
-        )
-        
-        chunks = text_splitter.split_text(text)
+        chunks = self.text_splitter.split_text(text)
         documents = [Document(page_content=chunk, metadata=metadata) for chunk in chunks]
         self.add_documents(documents)
 
