@@ -1,9 +1,7 @@
-import os
 import re
-import yaml
 import shutil
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from pathlib import Path
 from datetime import datetime
 from core.utils import normalize_term, parse_frontmatter, dump_frontmatter
