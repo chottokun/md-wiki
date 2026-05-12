@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, List
 from ruamel.yaml import YAML
 from io import StringIO
+from functools import lru_cache
 
 # YAMLハンドラーの初期化 (コメントとスタイルを維持)
 yaml = YAML()
@@ -76,6 +77,7 @@ def dump_frontmatter(data: Dict[str, Any]) -> str:
     yaml.dump(data, stream)
     return f"---\n{stream.getvalue().strip()}\n---\n"
 
+@lru_cache(maxsize=1)
 def get_all_concepts(wiki_dir: str = "wiki") -> List[str]:
     """wiki/concepts ディレクトリ内のファイル名から既存の概念リストを取得する。"""
     concept_dir = Path(wiki_dir) / "concepts"
