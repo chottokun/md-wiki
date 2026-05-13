@@ -15,8 +15,26 @@ logger = logging.getLogger(__name__)
 
 class ObsidianWriter:
     def __init__(self, wiki_dir: Optional[str] = None):
-        self.wiki_dir = Path(wiki_dir) if wiki_dir else Config.WIKI_DIR
+        self.wiki_dir = Path(wiki_dir).resolve() if wiki_dir else Config.WIKI_DIR.resolve()
         self.wiki_dir.mkdir(parents=True, exist_ok=True)
+
+    def _get_safe_path(self, base_dir: Path, *path_parts: str) -> Path:
+        """ベースディレクトリ配下の安全なパスを生成し、ディレクトリトラバーサルを防止する。"""
+        # 絶対パスが渡された場合にパスの起点がリセットされるのを防ぐため、
+        # 各パーツから先頭のスラッシュを除去する
+        safe_parts = [str(Path(p)).lstrip(os.sep).lstrip('/') for p in path_parts if p]
+
+        # 結合して絶対パスに変換
+        joined = base_dir.joinpath(*safe_parts).resolve()
+
+        try:
+            # joined が base_dir 配下にあることを確認
+            joined.relative_to(base_dir)
+        except ValueError:
+            logger.error(f"Path traversal attempt blocked: {path_parts} under {base_dir}")
+            raise ValueError(f"Security Alert: Invalid path components {path_parts}")
+
+        return joined
 
     def generate_diff(self, old_text: str, new_text: str) -> str:
         """単純な行ベースの差分を生成（difflibを使用）"""
@@ -35,10 +53,17 @@ class ObsidianWriter:
         レビュー用のファイルを wiki/ (または sub_dir) に作成する。
         """
         safe_page_name = normalize_term(page_name)
-        target_dir = self.wiki_dir / sub_dir if sub_dir else self.wiki_dir
+
+        # ディレクトリトラバーサル対策
+        if sub_dir:
+            target_dir = self._get_safe_path(self.wiki_dir, sub_dir)
+        else:
+            target_dir = self.wiki_dir
+
         target_dir.mkdir(parents=True, exist_ok=True)
+
         filename = safe_page_name if safe_page_name.endswith(".md") else f"{safe_page_name}.md"
-        wiki_path = target_dir / filename
+        wiki_path = self._get_safe_path(target_dir, filename)
         
         source_link = self._handle_source_file(source_filename, source_path) if source_filename else None
         raw_link = self._handle_raw_markdown(safe_page_name, raw_markdown) if raw_markdown else None
@@ -186,26 +211,44 @@ class ObsidianWriter:
 
     def _handle_source_file(self, filename: Optional[str], source_path: Optional[str] = None) -> Optional[str]:
         if not filename: return None
-        sources_dir = self.wiki_dir / "sources"
+        sources_dir = self._get_safe_path(self.wiki_dir, "sources")
         sources_dir.mkdir(exist_ok=True)
         
-        # まず指定されたパス（source_path）を試す
-        src = Path(source_path) if source_path else Path("_raw") / filename
+        # 出力先パスの検証
+        target_path = self._get_safe_path(sources_dir, filename)
+
+        # 入力ソースパスの制限（_raw ディレクトリ配下のみ許可）
+        raw_base = Path("_raw").resolve()
+        if source_path:
+            src = Path(source_path).resolve()
+            try:
+                src.relative_to(raw_base)
+            except ValueError:
+                logger.warning(f"External source path blocked: {source_path}. Using default _raw location.")
+                src = raw_base / Path(filename).name
+        else:
+            src = raw_base / Path(filename).name
+
         if not src.exists():
-            # 見つからなければデフォルトの _raw を試す
-            src = Path("_raw") / filename
+            src = raw_base / Path(filename).name
             
-        if src.exists():
-            shutil.copy2(src, sources_dir / filename)
-        return f"[[sources/{filename}]]"
+        if src.exists() and src.is_file():
+            shutil.copy2(src, target_path)
+
+        rel_path = target_path.relative_to(self.wiki_dir)
+        return f"[[{rel_path}]]"
 
     def _handle_raw_markdown(self, name: str, content: Optional[str]) -> Optional[str]:
         if not content: return None
-        raw_dir = self.wiki_dir / "raw_markdown"
+        raw_dir = self._get_safe_path(self.wiki_dir, "raw_markdown")
         raw_dir.mkdir(exist_ok=True)
-        raw_path = raw_dir / f"{name}.md"
+
+        filename = f"{name}.md" if not name.endswith(".md") else name
+        raw_path = self._get_safe_path(raw_dir, filename)
+
         raw_path.write_text(content, encoding="utf-8")
-        return f"[[raw_markdown/{name}]]"
+        rel_path = raw_path.relative_to(self.wiki_dir)
+        return f"[[{rel_path}]]"
 
     def _generate_footer(self, source_link: Optional[str], raw_link: Optional[str]) -> str:
         footer = "\n\n---\n## 🔗 リソース\n"
