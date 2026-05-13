@@ -2,6 +2,7 @@ import unittest
 import os
 import shutil
 import subprocess
+from unittest.mock import patch, MagicMock
 from pathlib import Path
 from agent.graph import app
 from langgraph.types import Command
@@ -74,6 +75,5 @@ class TestE2ECoEditor(unittest.TestCase):
         self.assertIn("applied", state.values["status"])
         print("\n✅ E2E Co-Editor flow (Judgment -> Refine -> Apply) verified.")
 
-from unittest.mock import patch, MagicMock
 if __name__ == '__main__':
     unittest.main()

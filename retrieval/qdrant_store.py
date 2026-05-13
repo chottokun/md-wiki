@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_qdrant import QdrantVectorStore, RetrievalMode, FastEmbedSparse
 from langchain_ollama import OllamaEmbeddings
 from qdrant_client import QdrantClient
@@ -30,6 +31,9 @@ class QdrantHybridStore:
             url = os.getenv("QDRANT_URL", "http://localhost:6333")
             logger.info(f"Qdrantをサーバーモード({url})で初期化します。")
             self.client = QdrantClient(url=url)
+        elif mode == "memory":
+            logger.info("Qdrantをインメモリモードで初期化します。")
+            self.client = QdrantClient(location=":memory:")
         else:
             path = "./qdrant_data"
             logger.info(f"Qdrantをローカルモード({path})で初期化します。")
@@ -50,6 +54,12 @@ class QdrantHybridStore:
             sparse_embedding=self.sparse_embeddings,
             retrieval_mode=RetrievalMode.HYBRID,
         )
+        
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=int(os.getenv("CHUNK_SIZE", "400")),
+            chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "50")),
+            separators=["\n\n", "\n", "。", "、", " ", ""]
+        )
 
     def _ensure_collection(self):
         """コレクションが存在しない場合は作成する。"""
@@ -66,19 +76,12 @@ class QdrantHybridStore:
                 }
             )
 
+    def get_chunks(self, text: str, metadata: Dict[str, Any]) -> List[Document]:
+        chunks = self.text_splitter.split_text(text)
+        return [Document(page_content=chunk, metadata=metadata) for chunk in chunks]
+
     def add_text(self, text: str, metadata: Dict[str, Any]):
-        from langchain_text_splitters import RecursiveCharacterTextSplitter
-        chunk_size = int(os.getenv("CHUNK_SIZE", "400"))
-        chunk_overlap = int(os.getenv("CHUNK_OVERLAP", "50"))
-        
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-            separators=["\n\n", "\n", "。", "、", " ", ""]
-        )
-        
-        chunks = text_splitter.split_text(text)
-        documents = [Document(page_content=chunk, metadata=metadata) for chunk in chunks]
+        documents = self.get_chunks(text, metadata)
         self.add_documents(documents)
 
     def add_documents(self, documents: List[Document]):
@@ -95,6 +98,7 @@ class QdrantHybridStore:
         # テスト等でディレクトリを明示的に指定された場合に対応
         w_dir = Path(wiki_dir) if wiki_dir else self.wiki_dir
         
+        all_documents = []
         wiki_files = list(w_dir.glob("**/*.md"))
         for file_path in wiki_files:
             if any(x in file_path.name for x in [".md-wiki-sync-state", "Home.md", "log.md"]):
@@ -110,10 +114,13 @@ class QdrantHybridStore:
             
             if is_raw:
                 pdf_name = source_name.replace("_raw", "") + ".pdf"
-                self.add_text(content, {"source": pdf_name, "type": "raw_source"})
+                all_documents.extend(self.get_chunks(content, {"source": pdf_name, "type": "raw_source"}))
             else:
-                self.add_text(content, {"source": source_name, "type": "wiki_page"})
+                all_documents.extend(self.get_chunks(content, {"source": source_name, "type": "wiki_page"}))
         
+        if all_documents:
+            self.add_documents(all_documents)
+            
         logger.info("全件同期が完了しました。")
 
     def delete_source(self, source_name: str):

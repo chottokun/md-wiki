@@ -92,6 +92,8 @@ def get_all_concepts(wiki_dir: str = "wiki") -> List[str]:
             concepts.append(name)
     return list(set(concepts))
 
+WIKI_LINK_RE = re.compile(r"\[\[(.*?)\]\]")
+
 def auto_link_concepts(body: str, concepts: List[str]) -> str:
     """本文中の用語を自動でリンク化する。
     

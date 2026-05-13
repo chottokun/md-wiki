@@ -266,7 +266,44 @@ class ObsidianWriter:
     def update_index(self):
         pages = [p for p in self.wiki_dir.rglob("*.md") 
                  if p.name not in ["Home.md", "log.md"] and "raw_markdown" not in str(p) and "sources" not in str(p)]
-        page_list = [f"- [[{p.stem}]]" for p in sorted(pages)]
+                 
+        page_list = []
+        tag_map = {}
+
+        for p in sorted(pages):
+            try:
+                content = p.read_text(encoding="utf-8")
+                data, _ = parse_frontmatter(content)
+                tags = data.get("tags", []) if data else []
+                if isinstance(tags, str): tags = [tags]
+
+                page_list.append(f"- [[{p.stem}]]")
+                for tag in tags:
+                    tag_map.setdefault(tag, []).append(f"[[{p.stem}]]")
+            except Exception as e:
+                logger.error(f"Error indexing page {p}: {e}")
+                continue
+
+        # タグセクションの生成
+        tag_section_parts = []
+        for tag in sorted(tag_map.keys()):
+            pages_under_tag = ", ".join(sorted(list(set(tag_map[tag]))))
+            tag_section_parts.append(f"- #{tag} : {pages_under_tag}")
+
+        tag_section = "## 🏷️ タグ別インデックス\n" + "\n".join(tag_section_parts) if tag_section_parts else ""
+
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-        index_md = f"# 🏠 RAG-Wiki Home\n\n## 📚 全ページ\n" + "\n".join(page_list) + f"\n\n---\n*Updated: {now_str}*"
+
+        # コンテンツの結合
+        sections = [
+            "# 🏠 RAG-Wiki Home",
+            "## 📚 全ページ",
+            "\n".join(page_list) if page_list else "ページが見つかりません。"
+        ]
+        if tag_section:
+            sections.append(tag_section)
+
+        sections.append(f"---\n*Updated: {now_str}*")
+
+        index_md = "\n\n".join(s.strip() for s in sections if s.strip())
         (self.wiki_dir / "Home.md").write_text(index_md, encoding="utf-8")

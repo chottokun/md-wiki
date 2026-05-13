@@ -20,21 +20,37 @@ def test_prompts_generation():
     term = "Sample Term"
     context = "Sample Context"
     
-    assert content in get_ingest_prompt(content)
-    assert term in get_lint_body_prompt(term, context)
-    assert context in get_lint_body_prompt(term, context)
-    assert "Sample body" in get_metadata_prompt("Sample body", term)
-    assert term in get_metadata_prompt("Sample body", term)
-    assert "Sample body" in get_fallback_prompt("Sample body")
-    assert term in get_translation_prompt(term)
-    assert term in get_judgment_prompt(term, "raw markdown")
-    assert "raw markdown" in get_judgment_prompt(term, "raw markdown")
-    assert term in get_refine_prompt(term, "current content", "raw markdown", "instruction")
-    assert "current content" in get_refine_prompt(term, "current content", "raw markdown", "instruction")
-    assert "raw markdown" in get_refine_prompt(term, "current content", "raw markdown", "instruction")
-    assert term in get_draft_body_prompt(term, "raw markdown", context)
-    assert "raw markdown" in get_draft_body_prompt(term, "raw markdown", context)
-    assert context in get_draft_body_prompt(term, "raw markdown", context)
+    # Prompt is now a list of (role, content) tuples
+    ingest_prompt = get_ingest_prompt(content)
+    assert content in ingest_prompt[1][1]
+    
+    lint_prompt = get_lint_body_prompt(term, context)
+    assert term in lint_prompt[0][1]
+    assert context in lint_prompt[1][1]
+    
+    meta_prompt = get_metadata_prompt("Sample body", term)
+    assert term in meta_prompt[0][1]
+    assert "Sample body" in meta_prompt[1][1]
+    
+    fallback_prompt = get_fallback_prompt("Sample body")
+    assert "Sample body" in fallback_prompt[1][1]
+    
+    translation_prompt = get_translation_prompt(term)
+    assert term in translation_prompt[1][1]
+    
+    judgement_prompt = get_judgment_prompt(term, "raw markdown")
+    assert term in judgement_prompt[0][1]
+    assert "raw markdown" in judgement_prompt[1][1]
+    
+    refine_prompt = get_refine_prompt(term, "current content", "raw markdown", "instruction")
+    assert term in refine_prompt[0][1]
+    assert "current content" in refine_prompt[1][1]
+    assert "raw markdown" in refine_prompt[1][1]
+    
+    draft_prompt = get_draft_body_prompt(term, "raw markdown", context)
+    assert term in draft_prompt[0][1]
+    assert "raw markdown" in draft_prompt[1][1]
+    assert context in draft_prompt[1][1]
 
 def test_sync_manager_init():
     # Test if GitSyncManager initializes with Config.WIKI_DIR

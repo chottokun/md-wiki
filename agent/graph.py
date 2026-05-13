@@ -15,7 +15,8 @@ from core.utils import (
     auto_link_concepts, 
     get_all_concepts, 
     parse_and_filter_concepts,
-    extract_json_from_text
+    extract_json_from_text,
+    WIKI_LINK_RE
 )
 from ingestion.docling_parser import DoclingParser
 from retrieval.qdrant_store import QdrantHybridStore
@@ -150,7 +151,7 @@ def _generate_stub_data(term: str, context: str, source_links: list, evidences: 
         except Exception as e2:
             logger.warning(f"Fallback LLM extraction failed: {e2}")
             new_concepts = []
-        found_links = list(set(re.findall(r"\[\[(.*?)\]\]", clean_body)))
+        found_links = list(set(WIKI_LINK_RE.findall(clean_body)))
         link_concepts = [l.split("|")[0].strip().replace("[[", "").replace("]]", "") for l in found_links]
         global_concepts = get_all_concepts()
         concepts = list(set(new_concepts + link_concepts + global_concepts))
@@ -279,7 +280,7 @@ def draft_node(state: AgentState) -> Dict[str, Any]:
         except Exception as e2:
             new_concepts = []
 
-        found_links = list(set(re.findall(r"\[\[(.*?)\]\]", clean_body)))
+        found_links = list(set(WIKI_LINK_RE.findall(clean_body)))
         link_concepts = [l.split("|")[0].strip().replace("[[", "").replace("]]", "") for l in found_links]
         global_concepts = get_all_concepts()
         concepts = list(set(new_concepts + link_concepts + global_concepts))

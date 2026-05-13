@@ -6,6 +6,7 @@ from langchain_core.documents import Document
 from core.llm_router import LLMLayer
 from core.config import Config
 from core.prompts import get_query_prompt
+from core.utils import WIKI_LINK_RE
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ class WikiQueryEngine:
             if d.metadata.get("type") == "wiki_page":
                 # リンクの抽出 (Markdownエスケープを考慮)
                 content = d.page_content.replace("\\", "")
-                links = re.findall(r"\[\[(.*?)\]\]", content)
+                links = WIKI_LINK_RE.findall(content)
                 for link in links:
                     if link not in seen_sources:
                         link_path = self._find_link_path(link)

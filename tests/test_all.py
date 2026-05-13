@@ -394,9 +394,9 @@ class TestGlobalConceptLinking:
         from core.utils import get_all_concepts
         concept_dir = tmp_path / "concepts"
         concept_dir.mkdir()
-        (concept_dir / "RAG.md").write_text("body")
-        (concept_dir / "LLM.md").write_text("body")
-        (concept_dir / "[[Self-RAG]].md").write_text("body") # 不正なファイル名も救済できるか
+        (concept_dir / "RAG.md").write_text("body", encoding="utf-8")
+        (concept_dir / "LLM.md").write_text("body", encoding="utf-8")
+        (concept_dir / "[[Self-RAG]].md").write_text("body", encoding="utf-8") # 不正なファイル名も救済できるか
 
         concepts = get_all_concepts(wiki_dir=tmp_path)
         assert "RAG" in concepts

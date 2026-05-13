@@ -13,7 +13,7 @@ class TestAgentFlow(unittest.TestCase):
         self.wiki_dir = Path("wiki")
         
         self.test_file = self.raw_dir / "integration_test.txt"
-        self.test_file.write_text("Recent advances in AI agents show that HITL is crucial.")
+        self.test_file.write_text("Recent advances in AI agents show that HITL is crucial.", encoding="utf-8")
         
         self.config = {"configurable": {"thread_id": "test_thread"}}
 

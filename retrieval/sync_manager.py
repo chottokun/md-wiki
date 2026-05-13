@@ -30,11 +30,11 @@ class GitSyncManager:
 
     def _get_last_synced_hash(self) -> str:
         if self.state_file.exists():
-            return self.state_file.read_text().strip()
+            return self.state_file.read_text(encoding="utf-8").strip()
         return ""
 
     def _save_sync_state(self, commit_hash: str):
-        self.state_file.write_text(commit_hash)
+        self.state_file.write_text(commit_hash, encoding="utf-8")
 
     def get_changed_files(self) -> Set[Path]:
         """
