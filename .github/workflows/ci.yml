@@ -1,0 +1,48 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches: [ "main", "dev" ]
+  pull_request:
+    branches: [ "main", "dev" ]
+
+jobs:
+  test-and-security:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e .
+        pip install pytest bandit
+
+    - name: Run Standard Tests
+      run: |
+        # PYTHONPATH is set to current directory to ensure local modules are found
+        PYTHONPATH=. pytest tests/ -k "not test_security"
+
+    - name: Run Security Tests (Dynamic Analysis)
+      run: |
+        # Run specific security tests (Path Traversal, Prompt Injection, etc.)
+        PYTHONPATH=. pytest tests/test_security_*.py -v
+
+    - name: Run Bandit (Static Application Security Testing)
+      run: |
+        # Run bandit on core source code to find common security issues
+        # -ll ignores low severity issues, -ii ignores low confidence issues
+        bandit -r agent/ core/ ingestion/ output/ retrieval/ -ll -ii
+
+  # Future deployment or build steps can be added here, 
+  # depending on the success of the 'test-and-security' job.
