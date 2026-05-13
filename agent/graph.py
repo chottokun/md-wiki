@@ -14,7 +14,8 @@ from core.utils import (
     is_technical_term, 
     auto_link_concepts, 
     get_all_concepts, 
-    parse_and_filter_concepts
+    parse_and_filter_concepts,
+    extract_json_from_text
 )
 from ingestion.docling_parser import DoclingParser
 from retrieval.qdrant_store import QdrantHybridStore
@@ -32,17 +33,6 @@ from core.prompts import (
 )
 
 logger = logging.getLogger(__name__)
-
-def extract_json_from_text(text: str) -> Optional[str]:
-    """MarkdownなどのテキストからJSONブロックを抽出する。"""
-    match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
-    if match:
-        return match.group(1)
-    start = text.find("{")
-    end = text.rfind("}")
-    if start != -1 and end != -1:
-        return text[start:end+1]
-    return None
 
 # シングルトン
 docling_parser = DoclingParser()

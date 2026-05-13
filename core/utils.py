@@ -193,3 +193,31 @@ def is_technical_term(term: str) -> bool:
     # 特殊記号のみ、または特定の単語のみを排除
     if re.match(r'^[0-9\.\-\(\)\s]+$', norm): return False
     return True
+
+def extract_json_from_text(text: str) -> Optional[str]:
+    """
+    MarkdownなどのテキストからJSONブロックを抽出する。
+    1. ```json ... ``` ブロックを優先。
+    2. 見つからない場合は、最も外側の { ... } を抽出。
+    3. LLMが不純物を混ぜた場合（例: **Metadata** { ... }）にも対応。
+    """
+    if not text:
+        return None
+        
+    # 1. ```json ... ``` の抽出
+    json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    if json_match:
+        return json_match.group(1)
+        
+    # 2. 最初と最後のブラケットを探す
+    start = text.find("{")
+    end = text.rfind("}")
+    
+    if start != -1 and end != -1 and end > start:
+        # ブラケットの内側を抽出
+        candidate = text[start:end+1]
+        # 最小限の検証: ブラケットが閉じているか
+        if candidate.count("{") == candidate.count("}"):
+            return candidate
+            
+    return None
