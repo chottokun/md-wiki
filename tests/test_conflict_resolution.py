@@ -27,7 +27,12 @@ Retrieval-Augmented Generation (RAG) は外部知識を活用します。
         # 3. ワークフロー開始
         config = {"configurable": {"thread_id": "conflict_test"}}
         # router_entry が 'conflict' を返すことを期待
-        for event in app.stream({"raw_markdown": conflict_text, "target_page": "RAG_Intro"}, config, stream_mode="values"):
+        input_state = {
+            "status": "starting_conflict",
+            "raw_markdown": conflict_text, 
+            "target_page": "RAG_Intro"
+        }
+        for event in app.stream(input_state, config, stream_mode="values"):
             if event.get("status") == "resolved":
                 break
         

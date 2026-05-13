@@ -35,11 +35,12 @@ class TestE2ECoEditor(unittest.TestCase):
         # 1. 手動編集（一行追記）
         self.test_file.write_text("# Demo Page\nOriginal text.\nAdd fact from human.", encoding="utf-8")
         
-        # 2. Diff抽出
+        # Diff抽出
         from retrieval.sync_manager import GitSyncManager
         # テスト用のStoreを渡す（物理的なQdrantを使わないように工夫）
-        mgr = GitSyncManager(store=MagicMock(), wiki_dir=str(self.test_base))
+        mgr = GitSyncManager(store=MagicMock(), wiki_dir=self.test_base)
         diff = mgr.get_unstaged_diff("DemoPage.md")
+
         
         # 3. LLMのモック
         # 1回目(judgment): YES

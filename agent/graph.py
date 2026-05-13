@@ -305,6 +305,21 @@ def draft_node(state: AgentState) -> Dict[str, Any]:
     return {"proposed_data": proposed_data, "status": "drafted"}
 
 
+def conflict_node(state: AgentState) -> Dict[str, Any]:
+    """Gitの衝突マーカーを検知し、LLMで解決案を合成する。"""
+    llm = router.get_model(LLMLayer.L2)
+    prompt = get_refine_prompt(state['target_page'], "", state['raw_markdown'], "Please resolve the git conflicts and provide a clean version.")
+    try:
+        # Pydanticモデルが期待される場合はそちらに、そうでなければ生テキスト
+        # ここでは簡易的に refine_node と同様のロジックを使用
+        structured_llm = llm.with_structured_output(WikiPageSchema)
+        result = structured_llm.invoke(prompt)
+        return {"proposed_data": result.model_dump(), "status": "resolved"}
+    except Exception as e:
+        logger.warning(f"Conflict resolution structured output failed: {e}. Falling back to text.")
+        raw_text = llm.invoke(prompt).content
+        return {"proposed_content": raw_text, "status": "resolved"}
+
 def review_node(state: AgentState) -> Dict[str, Any]:
     """構造化データを受け取ってドラフトファイルを出力する。"""
     logger.info("🚀🚀🚀 REVIEW_NODE STARTED 🚀🚀🚀")
@@ -320,6 +335,7 @@ def router_entry(state: AgentState):
     status = state.get("status")
     if status == "starting_lint": return "lint"
     if status == "starting_refine": return "judgment"
+    if status == "starting_conflict": return "conflict"
     if state.get("maintenance_topic"): return "synthesis" # 未実装だが必要なら
     return "ingest"
 
@@ -328,6 +344,7 @@ workflow.add_node("ingest", ingest_node)
 workflow.add_node("lint", lint_node)
 workflow.add_node("judgment", judgment_node)
 workflow.add_node("refine", refine_node)
+workflow.add_node("conflict", conflict_node)
 workflow.add_node("draft", draft_node)
 workflow.add_node("review", review_node)
 
@@ -335,6 +352,7 @@ workflow.add_conditional_edges(START, router_entry)
 workflow.add_conditional_edges("judgment", lambda s: "refine" if s.get("status") == "update_needed" else END)
 workflow.add_conditional_edges("ingest", lambda s: "draft" if s.get("status") != "error" else END)
 workflow.add_edge("refine", "review")
+workflow.add_edge("conflict", "review")
 workflow.add_edge("draft", "review")
 workflow.add_edge("review", END)
 

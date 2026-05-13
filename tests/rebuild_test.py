@@ -49,6 +49,15 @@ def run_cmd(cmd_list, timeout=120):
                 print(f"    {line.strip()}")
     return result
 
+def remove_readonly(func, path, _):
+    """Windowsで.git内の読み取り専用ファイルを削除するためのハンドラ。"""
+    import stat
+    try:
+        os.chmod(path, stat.S_IWRITE)
+        func(path)
+    except Exception:
+        pass
+
 def test_full_rebuild():
     """Wikiをゼロから再構築し、品質を検証する。"""
     wiki_dir = Path("wiki")
@@ -62,7 +71,7 @@ def test_full_rebuild():
             if item.name == ".obsidian":
                 continue
             if item.is_dir():
-                shutil.rmtree(item)
+                shutil.rmtree(item, onexc=remove_readonly)
             else:
                 item.unlink()
     else:
