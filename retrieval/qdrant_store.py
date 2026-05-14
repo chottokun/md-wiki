@@ -120,7 +120,7 @@ class QdrantHybridStore:
         
         if all_documents:
             self.add_documents(all_documents)
-            
+
         logger.info("全件同期が完了しました。")
 
     def delete_source(self, source_name: str):
