@@ -356,4 +356,4 @@ workflow.add_edge("conflict", "review")
 workflow.add_edge("draft", "review")
 workflow.add_edge("review", END)
 
-app = workflow.compile(checkpointer=MemorySaver())
+app = workflow.compile(checkpointer=MemorySaver(), interrupt_before=["review"])

@@ -1,4 +1,14 @@
+def _escape_xml(text: str) -> str:
+    r"""
+    Escapes potential closing tags in untrusted input to prevent prompt injection.
+    Example: </content> -> <\/content>
+    """
+    if not isinstance(text, str):
+        return text
+    return text.replace("</", "<\\/")
+
 def get_ingest_prompt(content: str) -> list:
+    content = _escape_xml(content)
     return [
         ("system", "与えられたドキュメントの内容を分析し、Obsidianのファイル名として最も適切な日本語のタイトル（例：ベクトル検索の進化_2024）を1つ提案してください。\n"
                    "解説は一切不要です。タイトルのみを出力してください。\n"
@@ -7,6 +17,8 @@ def get_ingest_prompt(content: str) -> list:
     ]
 
 def get_lint_body_prompt(term: str, context: str) -> list:
+    term = _escape_xml(term)
+    context = _escape_xml(context)
     return [
         ("system", "あなたは高度な技術知識を持つWiki管理者です。\n"
                    f"技術用語 '{term}' について、専門的な解説記事をMarkdown形式で作成してください。\n"
@@ -27,11 +39,13 @@ def get_lint_body_prompt(term: str, context: str) -> list:
     ]
 
 def get_metadata_prompt(body: str, title_or_term: str) -> list:
+    body = _escape_xml(body)
+    title_or_term = _escape_xml(title_or_term)
     return [
         ("system", "以下のWiki記事からメタデータを抽出せよ。\n"
                    "【抽出ルール】\n"
                    f"- title: 記事のタイトル（{title_or_term}）\n"
-                   "- abstract: 3行程度の具体的なかつ詳細な要約\n"
+                   "- abstract: 3行程度の具体的かつ詳細な要約\n"
                    "- concepts: 本文中の主要な技術用語、固有名詞、概念のリスト（15個程度）\n"
                    "- tags: 分類タグのリスト（短く、スペースを含まない）\n"
                    f"- aliases: タイトル '{title_or_term}' の完全な「別名」または「略称」のみをリスト化してください。関連用語は含めないでください。\n"
@@ -40,6 +54,7 @@ def get_metadata_prompt(body: str, title_or_term: str) -> list:
     ]
 
 def get_fallback_prompt(body: str) -> list:
+    body = _escape_xml(body)
     return [
         ("system", "以下のテキストから、研究分野（NLP / RAG / システムエンジニアリング）において定義が必要な、**専門的な技術用語、固有のアルゴリズム名、モデル名**のみを厳選して抽出せよ。\n"
                    "- 一般的な名詞や動詞、単なる英単語は除外すること。\n"
@@ -54,12 +69,15 @@ def get_fallback_prompt(body: str) -> list:
     ]
 
 def get_translation_prompt(term: str) -> list:
+    term = _escape_xml(term)
     return [
         ("system", "Translate the technical term provided in <term> tags to English. Output ONLY the translated term."),
         ("user", f"<term>{term}</term>")
     ]
 
 def get_judgment_prompt(target_page: str, raw_markdown: str) -> list:
+    target_page = _escape_xml(target_page)
+    raw_markdown = _escape_xml(raw_markdown)
     return [
         ("system", "既有のWiki知識と新規情報を比較し、更新が必要か判定せよ。\n"
                    f"ターゲット: {target_page}\n"
@@ -68,6 +86,9 @@ def get_judgment_prompt(target_page: str, raw_markdown: str) -> list:
     ]
 
 def get_refine_prompt(target_page: str, current_content: str, raw_markdown: str, lang_inst: str) -> list:
+    target_page = _escape_xml(target_page)
+    current_content = _escape_xml(current_content)
+    raw_markdown = _escape_xml(raw_markdown)
     return [
         ("system", f"既有のWikiページ [[{target_page}]] を最新情報に基づいて更新・洗練させよ。{lang_inst}\n"
                    "既有の記述を尊重しつつ、新情報を論理的に統合すること。\n"
@@ -81,6 +102,9 @@ def get_refine_prompt(target_page: str, current_content: str, raw_markdown: str,
     ]
 
 def get_draft_body_prompt(target_page: str, raw_markdown: str, context: str) -> list:
+    target_page = _escape_xml(target_page)
+    raw_markdown = _escape_xml(raw_markdown)
+    context = _escape_xml(context)
     return [
         ("system", "あなたは高度なナレッジエンジニアです。以下の情報を統合し、最高品質のWiki記事を執筆せよ。\n"
                    f"ターゲットタイトル: {target_page}\n"
@@ -89,7 +113,7 @@ def get_draft_body_prompt(target_page: str, raw_markdown: str, context: str) -> 
                    "2. > [!abstract] 概要\n"
                    "   記事の核心的な内容、技術的背景、および意義を3行以上で具体的に要約してください。\n"
                    "3. 本文構成:\n"
-                   "   - 専門用語（Self-RAG, Retrieval, Critique, LLM等）の英語表記をを優先。\n"
+                   "   - 専門用語（Self-RAG, Retrieval, Critique, LLM等）は英語表記を優先。\n"
                    "   - 重要用語には積極的に `[[用語名]]` で内部リンクを付与してください。\n"
                    "   - 図、表、箇条書きを活用して、読みやすく構造化してください。\n"
                    "注意: 出力は Markdown 本文のみとし、YAMLフロントマターは含めないでください。\n"
@@ -98,6 +122,8 @@ def get_draft_body_prompt(target_page: str, raw_markdown: str, context: str) -> 
     ]
 
 def get_query_prompt(query: str, context: str, lang_inst: str) -> list:
+    query = _escape_xml(query)
+    context = _escape_xml(context)
     return [
         ("system", f"あなたはWikiのナレッジアシスタントです。{lang_inst}\n"
                    "提供されるWikiページ（整理済み）、関連リンク（自動追跡）、および一次情報（生データ）を参考にして、質問に答えてください。\n"

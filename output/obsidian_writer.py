@@ -1,15 +1,14 @@
+import logging
 import os
 import re
-import yaml
 import shutil
-import logging
-from typing import Dict, Any, Optional, List
-from pathlib import Path
 from datetime import datetime
-from core.utils import normalize_term, parse_frontmatter, dump_frontmatter
+from pathlib import Path
+from typing import Dict, Any, Optional
 
 from core.config import Config
 from core.schemas import WikiFrontmatterSchema
+from core.utils import normalize_term, parse_frontmatter, dump_frontmatter
 
 logger = logging.getLogger(__name__)
 

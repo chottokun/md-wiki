@@ -101,5 +101,5 @@ class WikiQueryEngine:
         
         return "\n\n---\n\n".join(context_parts)
 
-    def _build_prompt(self, query: str, context: str, lang_inst: str) -> str:
+    def _build_prompt(self, query: str, context: str, lang_inst: str) -> list:
         return get_query_prompt(query, context, lang_inst)
