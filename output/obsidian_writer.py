@@ -12,6 +12,10 @@ from core.utils import normalize_term, parse_frontmatter, dump_frontmatter
 
 logger = logging.getLogger(__name__)
 
+# タグ抽出用の正規表現 (Obsidianの仕様に準拠)
+# 前に空白または行頭があり、#の後に1文字以上の英数字・スラッシュ・ハイフンが続くもの
+TAG_PATTERN = re.compile(r'(?<!\S)#([\w/-]+)')
+
 class ObsidianWriter:
     def __init__(self, wiki_dir: Optional[str] = None):
         self.wiki_dir = Path(wiki_dir).resolve() if wiki_dir else Config.WIKI_DIR.resolve()
@@ -263,24 +267,51 @@ class ObsidianWriter:
             f.write(entry)
 
     def update_index(self):
-        pages = [p for p in self.wiki_dir.rglob("*.md") 
-                 if p.name not in ["Home.md", "log.md"] and "raw_markdown" not in str(p) and "sources" not in str(p)]
+        pages = sorted([p for p in self.wiki_dir.rglob("*.md") 
+                 if p.name not in ["Home.md", "log.md"] and "raw_markdown" not in str(p) and "sources" not in str(p)])
                  
         page_list = []
         tag_map = {}
 
-        for p in sorted(pages):
+        for p in pages:
             try:
                 content = p.read_text(encoding="utf-8")
-                data, _ = parse_frontmatter(content)
-                tags = data.get("tags", []) if data else []
-                if isinstance(tags, str): tags = [tags]
-
-                page_list.append(f"- [[{p.stem}]]")
-                for tag in tags:
+                data, body = parse_frontmatter(content)
+                
+                # タグの抽出 (フロントマター + 本文)
+                tags = set()
+                
+                # 1. フロントマターから抽出
+                if data and "tags" in data:
+                    fm_tags = data["tags"]
+                    if isinstance(fm_tags, str):
+                        tags.add(fm_tags)
+                    elif isinstance(fm_tags, (list, set)):
+                        for t in fm_tags:
+                            if t: tags.add(str(t))
+                
+                # 2. 本文から抽出 (ヘッダーを除外しながら)
+                for line in body.splitlines():
+                    if re.match(r'^\s*#+\s+', line): # Markdownの見出し (# Header) を除外
+                        continue
+                    # TAG_PATTERN を使用してタグを抽出
+                    found = TAG_PATTERN.findall(line)
+                    for t in found:
+                        if t: tags.add(t)
+                
+                sorted_tags = sorted(list(tags))
+                
+                # ページリスト用 (タグを付与、重複排除済み)
+                tag_str = f" {' '.join(['#' + t for t in sorted_tags])}" if sorted_tags else ""
+                page_list.append(f"- [[{p.stem}]]{tag_str}")
+                
+                # タグ別マップ用 (タグインデックス生成用)
+                for tag in sorted_tags:
                     tag_map.setdefault(tag, []).append(f"[[{p.stem}]]")
+                    
             except Exception as e:
                 logger.error(f"Error indexing page {p}: {e}")
+                page_list.append(f"- [[{p.stem}]]")
                 continue
 
         # タグセクションの生成
@@ -293,7 +324,7 @@ class ObsidianWriter:
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-        # コンテンツの結合
+        # コンテンツの結合 (最新の日本語表現を維持)
         sections = [
             "# 🏠 RAG-Wiki Home",
             "## 📚 全ページ",
