@@ -1,34 +1,5 @@
-import sys
-from unittest.mock import MagicMock
-
-# Mock dependencies before importing agent.graph
-mock_modules = [
-    "langgraph",
-    "langgraph.graph",
-    "langgraph.checkpoint.memory",
-    "ingestion.docling_parser",
-    "retrieval.qdrant_store",
-    "output.obsidian_writer",
-    "core.llm_router",
-    "core.schemas",
-    "docling",
-    "docling.datamodel.base_models",
-    "docling.datamodel.pipeline_external_base",
-    "docling.document_converter",
-    "qdrant_client",
-]
-
-for mod_name in mock_modules:
-    sys.modules[mod_name] = MagicMock()
-
-# Now import the function
-try:
-    from agent.graph import extract_json_from_text
-except ImportError:
-    sys.modules["agent.state"] = MagicMock()
-    sys.modules["core.utils"] = MagicMock()
-    sys.modules["core.prompts"] = MagicMock()
-    from agent.graph import extract_json_from_text
+import pytest
+from core.utils import extract_json_from_text
 
 def test_extract_json_markdown():
     text = "Here is some json:\n```json\n{\"key\": \"value\"}\n```\nHope it helps."
@@ -60,6 +31,10 @@ def test_extract_json_malformed_braces():
     # Only closing brace
     assert extract_json_from_text("This } has no start") is None
 
+def test_extract_json_inverted_braces():
+    # Closing brace before opening brace
+    assert extract_json_from_text("Closing } before opening {") is None
+
 def test_extract_json_multiple_blocks():
     # Currently it takes the first match for ```json
     text = "```json\n{\"first\": 1}\n```\n```json\n{\"second\": 2}\n```"
@@ -70,10 +45,13 @@ def test_extract_json_fallback_with_extra_text():
     text = "Intro { \"key\": \"value\" } Outro"
     assert extract_json_from_text(text) == "{ \"key\": \"value\" }"
 
-def test_extract_json_greedy_fallback():
-    # Current implementation is greedy, it might include non-JSON text if there are multiple pairs
-    text = "First pair {not json} second pair {\"is\": \"json\"}"
-    # current behavior would return "{not json} second pair {\"is\": \"json\"}"
-    # Ideally it should probably return the valid JSON one, but the current logic is simple.
+def test_extract_json_non_greedy():
+    # Should find the first balanced object, not everything until the last brace
+    text = "First { \"a\": 1 } and Second { \"b\": 2 }"
     result = extract_json_from_text(text)
-    assert result == "{not json} second pair {\"is\": \"json\"}"
+    assert result == "{ \"a\": 1 }"
+
+def test_extract_json_complex_nesting():
+    text = "Text { \"a\": { \"b\": [1, 2], \"c\": { \"d\": 3 } } } extra"
+    expected = "{ \"a\": { \"b\": [1, 2], \"c\": { \"d\": 3 } } }"
+    assert extract_json_from_text(text) == expected
