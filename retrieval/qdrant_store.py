@@ -1,11 +1,13 @@
-import os
 import logging
+import os
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
+from dotenv import load_dotenv
 from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_qdrant import QdrantVectorStore, RetrievalMode, FastEmbedSparse
 from langchain_ollama import OllamaEmbeddings
+from langchain_qdrant import FastEmbedSparse, QdrantVectorStore, RetrievalMode
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest_models
 
@@ -21,7 +23,6 @@ class QdrantHybridStore:
         self,
         collection_name: str = "rag_wiki",
     ):
-        from dotenv import load_dotenv
         load_dotenv()
         self.collection_name = collection_name
         self.wiki_dir = Path("wiki")
@@ -84,8 +85,11 @@ class QdrantHybridStore:
         documents = self.get_chunks(text, metadata)
         self.add_documents(documents)
 
-    def add_documents(self, documents: List[Document]):
-        self.vector_store.add_documents(documents)
+    def add_documents(self, documents: List[Document], batch_size: int = 100):
+        """ドキュメントをバッチサイズごとに分割して登録する。"""
+        for i in range(0, len(documents), batch_size):
+            batch = documents[i : i + batch_size]
+            self.vector_store.add_documents(batch)
 
     def search(self, query: str, k: int = 5) -> List[Document]:
         return self.vector_store.similarity_search(query, k=k)
@@ -124,7 +128,6 @@ class QdrantHybridStore:
         logger.info("全件同期が完了しました。")
 
     def delete_source(self, source_name: str):
-        from qdrant_client.http import models as rest_models
         self.client.delete(
             collection_name=self.collection_name,
             points_selector=rest_models.Filter(
