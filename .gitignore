@@ -18,19 +18,22 @@ _raw/*
 qdrant_data/
 
 # --- Wiki Sources (PDFs) & Raw Markdown (Extracted Text) ---
-# これら�E一次惁E��はサイズが大きく、機寁E��が高いためGit管琁E��ら除夁E
-# 概念ペ�EジはLintで自動�E生�E可能なため除夁E
+# これら�E一次惁E��はサイズが大きく、機寁E��が高いためGit管琁E��ら除夁E
+# 概念ペ�EジはLintで自動�E生�E可能なため除夁E
 
 # --- Docling / Conversion Cache ---
 docling_output/
 *.docling_cache
 
-# --- Large Binaries & Apps ---
+# ---large Binaries & Apps ---
 *.AppImage
 *.exe
 *.deb
 data/
 docker-compose.override.yml
+
+# --- Agent Local Data ---
+.agent/
 
 # --- Editor & OS ---
 .vscode/

@@ -367,7 +367,12 @@ class TestWorkflow:
             mock_search.return_value = []
 
             config = {"configurable": {"thread_id": "test-1"}}
+            # 第一段階: interrupt_before=["review"] により一時停止
             final_state = app.invoke({"input_file": "test.md", "status": "starting"}, config=config)
+            assert final_state["status"] == "drafted"
+            
+            # 第二段階: 再開 (None を渡すことで次のノード 'review' を実行)
+            final_state = app.invoke(None, config=config)
             assert final_state["status"] == "completed"
             mock_save.assert_called_once()
 

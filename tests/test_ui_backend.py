@@ -9,8 +9,7 @@ class TestUIBackend(unittest.TestCase):
         self.test_wiki_dir = Path("tests/ui_test_wiki")
         self.test_staged_dir = Path("tests/ui_test_staged")
         self.writer = ObsidianWriter(
-            wiki_dir=str(self.test_wiki_dir),
-            staged_dir=str(self.test_staged_dir)
+            wiki_dir=str(self.test_wiki_dir)
         )
         self.test_wiki_dir.mkdir(parents=True, exist_ok=True)
         self.test_staged_dir.mkdir(parents=True, exist_ok=True)
