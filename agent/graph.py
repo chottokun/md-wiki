@@ -135,7 +135,7 @@ def _generate_stub_data(term: str, context: str, source_links: list, evidences: 
         final_body = auto_link_concepts(clean_body, all_targets)
         filtered_concepts = [c for c in metadata.concepts if c.lower() not in ["用語名", "title", "abstract", "concept"]]
         data = {
-            "title": metadata.title.strip().replace("[[", "").replace("]]", ""),
+            "title": normalize_term(metadata.title.strip().replace("[[", "").replace("]]", "")),
             "abstract": metadata.abstract,
             "concepts": filtered_concepts,
             "body": final_body,
@@ -158,7 +158,7 @@ def _generate_stub_data(term: str, context: str, source_links: list, evidences: 
         tags = ["auto-draft"] + [c for c in new_concepts if len(c) <= 15 and " " not in c][:5]
         final_body = auto_link_concepts(clean_body, concepts)
         data = {
-            "title": term.strip().replace("[[", "").replace("]]", ""),
+            "title": normalize_term(term.strip().replace("[[", "").replace("]]", "")),
             "abstract": "自動生成スタブ",
             "concepts": concepts,
             "body": final_body,
@@ -217,12 +217,14 @@ def refine_node(state: AgentState) -> Dict[str, Any]:
     prompt = get_refine_prompt(state['target_page'], current, state['raw_markdown'], lang_inst)
     try:
         result = structured_llm.invoke(prompt)
-        return {"proposed_data": result.model_dump(), "status": "refined"}
+        proposed_data = result.model_dump()
+        proposed_data["title"] = normalize_term(proposed_data.get("title") or state['target_page'])
+        return {"proposed_data": proposed_data, "status": "refined"}
     except Exception as e:
         logger.warning(f"Structured output failed for refine_node: {e}. Falling back to text.")
         raw_text = llm.invoke(prompt).content
         fallback_data = {
-            "title": state['target_page'],
+            "title": normalize_term(state['target_page']),
             "abstract": "更新されたコンテンツ（自動抽出失敗）",
             "concepts": [],
             "body": raw_text,
@@ -261,7 +263,7 @@ def draft_node(state: AgentState) -> Dict[str, Any]:
         final_body = auto_link_concepts(clean_body, all_targets)
         
         proposed_data = {
-            "title": metadata.title.strip().replace("[[", "").replace("]]", ""),
+            "title": normalize_term(metadata.title.strip().replace("[[", "").replace("]]", "")),
             "abstract": metadata.abstract,
             "concepts": metadata.concepts,
             "body": final_body,
@@ -291,7 +293,7 @@ def draft_node(state: AgentState) -> Dict[str, Any]:
         final_body = auto_link_concepts(clean_body, concepts)
         
         proposed_data = {
-            "title": state['target_page'].strip().replace("[[", "").replace("]]", ""),
+            "title": normalize_term(state['target_page'].strip().replace("[[", "").replace("]]", "")),
             "abstract": abstract,
             "concepts": concepts,
             "body": final_body,

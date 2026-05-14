@@ -80,6 +80,17 @@ def run_workflow(input_data: Dict[str, Any], auto_approve: bool = False):
         if status:
             print(f"  [進捗]: {status}")
 
+    # チェックポイントを確認し、中断されている場合は継続（auto_approve時）
+    snapshot = app.get_state(config)
+    if snapshot.next and "review" in snapshot.next:
+        if auto_approve:
+            print("  [承認]: 自動承認されたため、書き込みを実行します。")
+            for event in app.stream(None, config, stream_mode="values"):
+                current_state = event
+        else:
+            print(f"\n[待機]: レビュー待ちです。[[{current_state.get('target_page')}]] の内容を確認し、承認してください。")
+            print("(--yes オプションで自動承認可能です)")
+
     print("Done: Workflow finished.")
     if current_state and "target_page" in current_state:
         from output.obsidian_writer import ObsidianWriter

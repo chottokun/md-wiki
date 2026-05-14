@@ -53,9 +53,12 @@ class TestWikiQueryEngine(unittest.TestCase):
         args, _ = self.mock_model.invoke.call_args
         prompt = args[0]
         
-        self.assertIn("LinkedConcept は重要な技術です。", prompt)
-        self.assertIn("Original", prompt)
-        self.assertIn("日本語で回答してください。", prompt)
+        # プロンプトがリスト形式（[('system', '...'), ('user', '...')]) の場合、文字列に変換して検証
+        prompt_str = str(prompt)
+        
+        self.assertIn("LinkedConcept は重要な技術です。", prompt_str)
+        self.assertIn("Original", prompt_str)
+        self.assertIn("日本語で回答してください。", prompt_str)
 
     @patch('pathlib.Path.glob')
     @patch('pathlib.Path.read_text')
@@ -88,7 +91,8 @@ class TestWikiQueryEngine(unittest.TestCase):
         # 5. 検証
         args, _ = self.mock_model.invoke.call_args
         prompt = args[0]
-        self.assertIn("DeepConcept はサブディレクトリに隠れた重要な概念です。", prompt)
+        prompt_str = str(prompt)
+        self.assertIn("DeepConcept はサブディレクトリに隠れた重要な概念です。", prompt_str)
 
 if __name__ == '__main__':
     unittest.main()

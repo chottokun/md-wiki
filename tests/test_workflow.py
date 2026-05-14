@@ -41,7 +41,15 @@ def test_full_workflow_ingest_to_review():
         
         # ワークフローを実行 (thread_idが必要)
         config = {"configurable": {"thread_id": "test-thread"}}
+        # 第一段階: interrupt_before=["review"] により一時停止
         final_state = app.invoke(initial_state, config=config)
+        
+        # 検証
+        # ステータスは一時停止時点で 'drafted' になっているはず
+        assert final_state["status"] == "drafted"
+
+        # 第二段階: 再開 (None を渡すことで次のノード 'review' を実行)
+        final_state = app.invoke(None, config=config)
         
         # 検証
         # 1. 各ノードを通ったか（ステータスの変遷）

@@ -8,7 +8,9 @@ class TestLLMRouter(unittest.TestCase):
     def test_ollama_instance(self):
         # LLM_PROVIDER=ollama (default in .env)
         os.environ["LLM_PROVIDER"] = "ollama"
-        model = router.get_model(LLMLayer.L1)
+        from core.llm_router import LLMRouter
+        test_router = LLMRouter()
+        model = test_router.get_model(LLMLayer.L1)
         self.assertIsInstance(model, ChatOllama)
         self.assertEqual(model.model, os.getenv("LOCALLLM_MODEL"))
         # keep_alive: 0 が設定されているか確認

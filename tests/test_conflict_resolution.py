@@ -22,6 +22,23 @@ Retrieval-Augmented Generation (RAG) は外部知識を活用します。
         # 2. LLMのモック
         mock_model = MagicMock()
         mock_model.invoke.return_value = MagicMock(content="Retrieval-Augmented Generation (RAG) は、外部知識を活用する検索拡張生成の略称です。")
+        
+        # structured_output のモック
+        mock_structured_llm = MagicMock()
+        mock_model.with_structured_output.return_value = mock_structured_llm
+        
+        # model_dump() がシリアライズ可能な辞書を返すようにする
+        mock_result = MagicMock()
+        mock_result.model_dump.return_value = {
+            "title": "RAG_Intro",
+            "abstract": "RAGの概要",
+            "concepts": ["RAG"],
+            "body": "Retrieval-Augmented Generation (RAG) は、外部知識を活用する検索拡張生成の略称です。",
+            "tags": ["conflict-resolved"],
+            "aliases": []
+        }
+        mock_structured_llm.invoke.return_value = mock_result
+        
         mock_get_model.return_value = mock_model
         
         # 3. ワークフロー開始
@@ -38,8 +55,8 @@ Retrieval-Augmented Generation (RAG) は外部知識を活用します。
         
         # 4. 検証
         state = app.get_state(config)
-        self.assertIn("resolved", state.values["status"])
-        self.assertIn("RAG) は、外部知識を", state.values["proposed_content"])
+        self.assertEqual("resolved", state.values["status"])
+        self.assertIn("RAG) は、外部知識を", state.values["proposed_data"]["body"])
         print("\n✅ Conflict resolution logic verified via LLM synthesis.")
 
 if __name__ == '__main__':

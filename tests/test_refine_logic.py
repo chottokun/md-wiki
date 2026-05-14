@@ -8,15 +8,12 @@ class TestRefineLogic(unittest.TestCase):
     手動編集(git diff)をきっかけとしたAIによる自動改善提案フローの検証。
     """
 
-    @patch('subprocess.run')
-    def test_extract_unstaged_diff(self, mock_run):
+    @patch('git.Repo')
+    def test_extract_unstaged_diff(self, mock_repo):
         """unstagedな変更をgit diffで正しく抽出できるか。"""
-        mock_run.return_value = MagicMock(
-            stdout="--- a/wiki/Page.md\n+++ b/wiki/Page.md\n@@ -1,2 +1,2 @@\n-Old info\n+New factual info",
-            returncode=0
-        )
+        # Repo().git.diff('HEAD', 'Page.md') の戻り値を設定
+        mock_repo.return_value.git.diff.return_value = "--- a/wiki/Page.md\n+++ b/wiki/Page.md\n@@ -1,2 +1,2 @@\n-Old info\n+New factual info"
         
-        from retrieval.qdrant_store import QdrantHybridStore
         mgr = GitSyncManager(store=MagicMock())
         diff = mgr.get_unstaged_diff("Page.md")
         

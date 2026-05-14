@@ -34,6 +34,9 @@ def normalize_term(term: str) -> str:
     # 全角括弧→半角
     t = t.replace('（', '(').replace('）', ')')
     
+    # スラッシュやバックスラッシュをアンダースコアに置換（パス構成を回避）
+    t = t.replace('/', '_').replace('\\', '_')
+
     # コロン（MediaWiki名前空間記法）を除去
     t = t.replace(':', '')
     

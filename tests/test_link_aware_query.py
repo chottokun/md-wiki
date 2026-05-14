@@ -10,10 +10,11 @@ class TestLinkAwareQuery(unittest.TestCase):
     """
 
     @patch('retrieval.qdrant_store.QdrantHybridStore.search')
-    @patch('core.llm_router.LLMRouter.get_model')
+    @patch('core.llm_router.router.get_model')
+    @patch('output.obsidian_writer.ObsidianWriter.add_log_entry')
     @patch('pathlib.Path.exists')
     @patch('pathlib.Path.read_text')
-    def test_query_follows_wiki_links(self, mock_read, mock_exists, mock_get_model, mock_search):
+    def test_query_follows_wiki_links(self, mock_read, mock_exists, mock_log, mock_get_model, mock_search):
         """
         検索結果に [[LinkedPage]] が含まれる場合、その内容もコンテキストに追加されるか。
         """
@@ -28,6 +29,7 @@ class TestLinkAwareQuery(unittest.TestCase):
         
         # 3. LLMのモック
         mock_model = MagicMock()
+        mock_model.invoke.return_value = MagicMock(content="Mocked answer")
         mock_get_model.return_value = mock_model
         
         # 4. 実行
@@ -37,8 +39,10 @@ class TestLinkAwareQuery(unittest.TestCase):
         
         # 検証：リンク先のファイル読み込みが試行されたか
         # get_model のプロンプト構築時に、リンク先の内容が含まれているはず
+        self.assertIsNotNone(mock_model.invoke.call_args, "LLM model was not invoked")
         args, kwargs = mock_model.invoke.call_args
-        prompt_content = args[0]
+        # args[0] is typically the prompt (list of messages)
+        prompt_content = str(args[0])
         
         self.assertIn("Chain-of-Thought is a prompting technique.", prompt_content)
         self.assertIn("OriginalPage", prompt_content)

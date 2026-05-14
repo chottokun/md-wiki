@@ -4,9 +4,11 @@ import shutil
 import subprocess
 from unittest.mock import patch, MagicMock
 from pathlib import Path
+from langchain_core.messages import AIMessage
 from agent.graph import app
 from langgraph.types import Command
 from retrieval.qdrant_store import QdrantHybridStore
+from core.schemas import UpdateDecisionSchema, WikiPageSchema
 
 class TestE2ECoEditor(unittest.TestCase):
     """
@@ -43,13 +45,31 @@ class TestE2ECoEditor(unittest.TestCase):
 
         
         # 3. LLMのモック
-        # 1回目(judgment): YES
-        # 2回目(refine): パッチ生成
         mock_model = MagicMock()
-        mock_model.invoke.side_effect = [
-            MagicMock(content="YES"), # judgment
-            MagicMock(content=f"--- a/wiki/DemoPage.md\n+++ b/wiki/DemoPage.md\n@@ -1,2 +1,3 @@\n # Demo Page\n Original text.\n+Add fact from human.\n+AI refined content.") # patch
+        
+        # judgment node用
+        mock_structured_judgment = MagicMock()
+        mock_structured_judgment.invoke.return_value = UpdateDecisionSchema(update_needed=True, reason="New info from human")
+        
+        # refine node用
+        mock_structured_refine = MagicMock()
+        mock_structured_refine.invoke.return_value = WikiPageSchema(
+            title="DemoPage",
+            abstract="AI refined content based on human addition.",
+            concepts=["concept1"],
+            body="# Demo Page\nOriginal text.\nAdd fact from human.\nAI refined content.",
+            tags=["refined"],
+            aliases=[]
+        )
+        
+        mock_model.with_structured_output.side_effect = [
+            mock_structured_judgment,
+            mock_structured_refine
         ]
+        
+        # fallback用
+        mock_model.invoke.return_value = AIMessage(content="Fallback response")
+        
         mock_get_model.return_value = mock_model
 
         # 4. グラフ実行
@@ -71,9 +91,9 @@ class TestE2ECoEditor(unittest.TestCase):
             
         # 6. 最終結果の検証
         # 注: 物理的なマージには git apply が必要だが、GitSyncManagerの実装とテスト環境を整合させる必要がある
-        # 簡易的に、状態が 'applied' になっていることを確認
+        # 簡易的に、状態が 'completed' になっていることを確認
         state = app.get_state(config)
-        self.assertIn("applied", state.values["status"])
+        self.assertIn("completed", state.values["status"])
         print("\n✅ E2E Co-Editor flow (Judgment -> Refine -> Apply) verified.")
 
 if __name__ == '__main__':

@@ -4,6 +4,8 @@ from pathlib import Path
 import os
 from agent.graph import app
 from agent.state import AgentState
+from core.schemas import WikiMetadataSchema
+from langchain_core.messages import AIMessage
 
 class TestRedlinkResolution(unittest.TestCase):
     """
@@ -19,6 +21,7 @@ class TestRedlinkResolution(unittest.TestCase):
         # 1. Wikiフォルダの状況：PageAがあるが、中身に [[UnknownTerm]] へのリンク
         # (モックではなく物理的な小規模チェックを行う準備)
         wiki_dir = Path("wiki")
+        wiki_dir.mkdir(exist_ok=True)
         (wiki_dir / "PageA.md").write_text("Concepts like [[UnknownTerm]] are vital.", encoding="utf-8")
         
         # 2. Qdrantのモック：UnknownTerm で検索すると一次情報の断片がヒット
@@ -28,9 +31,23 @@ class TestRedlinkResolution(unittest.TestCase):
                      metadata={"source": "research_paper_2024.pdf", "type": "raw_source"})
         ]
         
-        # 3. LLMのモック（解説を生成）
+        # 3. LLMのモック
         mock_model = MagicMock()
-        mock_model.invoke.return_value = MagicMock(content="AI generated content about UnknownTerm based on primary source.")
+        
+        # body生成用
+        mock_model.invoke.return_value = AIMessage(content="AI generated content about UnknownTerm based on primary source.")
+        
+        # metadata抽出用
+        mock_structured = MagicMock()
+        mock_structured.invoke.return_value = WikiMetadataSchema(
+            title="UnknownTerm",
+            abstract="AI generated content about UnknownTerm",
+            concepts=["UnknownTerm"],
+            tags=["auto-draft"],
+            aliases=[]
+        )
+        mock_model.with_structured_output.return_value = mock_structured
+        
         mock_get_model.return_value = mock_model
         
         # 4. Lintノードを実行
@@ -39,9 +56,10 @@ class TestRedlinkResolution(unittest.TestCase):
         for event in app.stream({"status": "starting_lint"}, config, stream_mode="values"):
             pass
 
-        # 5. 検証：_staged/ に UnknownTerm_review.md が生成されていること
-        staged_file = Path("_staged/UnknownTerm_review.md")
-        self.assertTrue(staged_file.exists(), "Draft file for Red-link should be created.")
+        # 5. 検証：wiki/concepts/ に UnknownTerm.md が生成されていること
+        # agent/graph.py では obsidian_writer.create_draft_from_schema(data, sub_dir="concepts") を呼んでいる
+        staged_file = Path("wiki/concepts/UnknownTerm.md")
+        self.assertTrue(staged_file.exists(), f"Draft file for Red-link should be created at {staged_file}")
         
         # 6. 中身のエビデンス確認
         content = staged_file.read_text(encoding="utf-8")
@@ -51,6 +69,9 @@ class TestRedlinkResolution(unittest.TestCase):
         # クリーンアップ
         staged_file.unlink()
         (wiki_dir / "PageA.md").unlink()
+        if (wiki_dir / "concepts").exists():
+            for f in (wiki_dir / "concepts").iterdir(): f.unlink()
+            (wiki_dir / "concepts").rmdir()
         print("\n✅ Red-link auto-resolution (TDD) initial test verified logic path.")
 
 if __name__ == '__main__':

@@ -29,14 +29,20 @@ jobs:
         pip install pytest bandit
 
     - name: Run Standard Tests
+      env:
+        QDRANT_MODE: memory
+        PYTHONPATH: .
       run: |
-        # PYTHONPATH is set to current directory to ensure local modules are found
-        PYTHONPATH=. pytest tests/ -k "not test_security"
+        # PYTHONPATH is set via env to ensure local modules are found
+        pytest tests/ -k "not test_security"
 
     - name: Run Security Tests (Dynamic Analysis)
+      env:
+        QDRANT_MODE: memory
+        PYTHONPATH: .
       run: |
         # Run specific security tests (Path Traversal, Prompt Injection, etc.)
-        PYTHONPATH=. pytest tests/test_security_*.py -v
+        pytest tests/test_security_*.py -v
 
     - name: Run Bandit (Static Application Security Testing)
       run: |

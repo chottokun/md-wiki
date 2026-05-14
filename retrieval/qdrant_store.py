@@ -22,11 +22,12 @@ class QdrantHybridStore:
     def __init__(
         self,
         collection_name: str = "rag_wiki",
+        path: Optional[str] = None
     ):
         load_dotenv()
         self.collection_name = collection_name
         self.wiki_dir = Path("wiki")
-        
+
         mode = os.getenv("QDRANT_MODE", "local")
         if mode == "server":
             url = os.getenv("QDRANT_URL", "http://localhost:6333")
@@ -36,9 +37,10 @@ class QdrantHybridStore:
             logger.info("Qdrantをインメモリモードで初期化します。")
             self.client = QdrantClient(location=":memory:")
         else:
-            path = "./qdrant_data"
-            logger.info(f"Qdrantをローカルモード({path})で初期化します。")
-            self.client = QdrantClient(path=path)
+            q_path = path or os.getenv("QDRANT_PATH", "./qdrant_data")
+            logger.info(f"Qdrantをローカルモード({q_path})で初期化します。")
+            self.client = QdrantClient(path=q_path)
+
         
         self.embeddings = OllamaEmbeddings(
             model=os.getenv("EMBEDDING_MODEL", "mxbai-embed-large"),

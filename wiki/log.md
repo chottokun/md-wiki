@@ -1,1 +1,2 @@
-## [2026-05-14 21:22] query | Answered: Tell me about Chain-of-Thought...
+## [2026-05-15 05:39] ingest | Drafted self-ragの概要
+## [2026-05-15 05:40] ingest | Drafted ベクトル検索の進化_2026

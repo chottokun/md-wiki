@@ -17,9 +17,51 @@ logger = logging.getLogger(__name__)
 TAG_PATTERN = re.compile(r'(?<!\S)#([\w/-]+)')
 
 class ObsidianWriter:
-    def __init__(self, wiki_dir: Optional[str] = None):
+    def __init__(self, wiki_dir: Optional[str] = None, staged_dir: Optional[str] = None):
         self.wiki_dir = Path(wiki_dir).resolve() if wiki_dir else Config.WIKI_DIR.resolve()
         self.wiki_dir.mkdir(parents=True, exist_ok=True)
+        # Staged dir defaults to _staged relative to the workspace root if not provided
+        self.staged_dir = Path(staged_dir).resolve() if staged_dir else Path("_staged").resolve()
+        self.staged_dir.mkdir(parents=True, exist_ok=True)
+
+    def approve_update(self, page_name: str) -> bool:
+        """
+        承認されたドラフトを本番のWikiディレクトリに反映し、レビューファイルを削除する。
+        """
+        try:
+            safe_page_name = normalize_term(page_name)
+            staged_path = self.staged_dir / f"{safe_page_name}_review.md"
+            wiki_path = self.wiki_dir / f"{safe_page_name}.md"
+
+            if not staged_path.exists():
+                logger.error(f"承認対象のファイルが見つかりません: {staged_path}")
+                return False
+
+            content = staged_path.read_text(encoding="utf-8")
+
+            # Robust content extraction:
+            # 1. Try to find content between '## Proposed Full Content' and a boundary (--- or ## Agent Metadata)
+            match = re.search(r"## Proposed Full Content\n+(.*?)(?=\n---|\n## Agent Metadata|$)", content, re.DOTALL)
+            if match:
+                final_content = match.group(1).strip()
+            else:
+                # 2. If not found, take everything before the first boundary
+                match = re.search(r"(.*?)(?=\n---|\n## Agent Metadata|$)", content, re.DOTALL)
+                if match:
+                    final_content = match.group(1).strip()
+                else:
+                    final_content = content.strip()
+
+            # Wikiファイルを更新
+            wiki_path.write_text(final_content, encoding="utf-8")
+
+            # レビュー用一時ファイルを削除（クリーンアップ）
+            staged_path.unlink()
+            logger.info(f"Wikiを更新しました: {wiki_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Wikiの更新反映中にエラーが発生しました: {str(e)}")
+            return False
 
     def _get_safe_path(self, base_dir: Path, *path_parts: str) -> Path:
         """ベースディレクトリ配下の安全なパスを生成し、ディレクトリトラバーサルを防止する。"""
@@ -311,7 +353,6 @@ class ObsidianWriter:
                     
             except Exception as e:
                 logger.error(f"Error indexing page {p}: {e}")
-                page_list.append(f"- [[{p.stem}]]")
                 continue
 
         # タグセクションの生成
