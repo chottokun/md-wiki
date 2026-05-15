@@ -9,6 +9,7 @@ import os
 import shutil
 import time
 import subprocess
+import pytest
 from pathlib import Path
 from core.utils import parse_frontmatter
 
@@ -58,6 +59,7 @@ def remove_readonly(func, path, _):
     except Exception:
         pass
 
+@pytest.mark.ollama
 def test_full_rebuild():
     """Wikiをゼロから再構築し、品質を検証する。"""
     wiki_dir = Path("wiki")

@@ -5,10 +5,12 @@ from pathlib import Path
 from langchain_core.documents import Document
 from retrieval.qdrant_store import QdrantHybridStore
 from qdrant_client import QdrantClient
+import pytest
 
 # テスト用の設定
 COLLECTION_NAME = "test_collection"
 
+@pytest.mark.ollama
 class TestQdrantHybridStore(unittest.TestCase):
     @classmethod
     def setUpClass(cls):

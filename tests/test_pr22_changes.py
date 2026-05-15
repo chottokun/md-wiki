@@ -7,11 +7,12 @@ from core.prompts import (
     get_translation_prompt,
     get_judgment_prompt,
     get_refine_prompt,
-    get_draft_body_prompt
+    get_draft_body_prompt,
+    SECURITY_INSTRUCTION
 )
 from retrieval.sync_manager import GitSyncManager
 from retrieval.qdrant_store import QdrantHybridStore
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 from pathlib import Path
 
 def test_prompts_generation():
@@ -23,6 +24,7 @@ def test_prompts_generation():
     # Prompt is now a list of (role, content) tuples
     ingest_prompt = get_ingest_prompt(content)
     assert content in ingest_prompt[1][1]
+    assert SECURITY_INSTRUCTION in ingest_prompt[0][1]
     
     lint_prompt = get_lint_body_prompt(term, context)
     assert term in lint_prompt[0][1]
@@ -52,22 +54,35 @@ def test_prompts_generation():
     assert "raw markdown" in draft_prompt[1][1]
     assert context in draft_prompt[1][1]
 
-def test_sync_manager_init():
-    # Test if GitSyncManager initializes with Config.WIKI_DIR
+def test_sync_manager_init(tmp_path):
+    # Test if GitSyncManager initializes correctly with a mock store
     mock_store = MagicMock(spec=QdrantHybridStore)
-    sync_manager = GitSyncManager(store=mock_store)
+    repo_dir = tmp_path / "wiki"
+    repo_dir.mkdir()
+    import git
+    git.Repo.init(repo_dir)
     
-    from core.config import Config
-    assert sync_manager.wiki_dir == Config.WIKI_DIR.absolute()
-    assert sync_manager.repo is not None
+    with patch("core.config.Config.WIKI_DIR", repo_dir):
+        sync_manager = GitSyncManager(store=mock_store)
+        assert sync_manager.wiki_dir == repo_dir.absolute()
+        assert sync_manager.repo is not None
 
-def test_sync_manager_get_current_head():
+def test_sync_manager_get_current_head(tmp_path):
     mock_store = MagicMock(spec=QdrantHybridStore)
-    sync_manager = GitSyncManager(store=mock_store)
+    repo_dir = tmp_path / "wiki"
+    repo_dir.mkdir()
+    import git
+    repo = git.Repo.init(repo_dir)
+    # Need at least one commit for HEAD to exist
+    (repo_dir / "init.txt").write_text("init")
+    repo.git.add(all=True)
+    repo.index.commit("initial commit")
     
-    head = sync_manager._get_current_head()
-    assert head != "unknown"
-    assert len(head) == 40 # SHA-1 hash length
+    with patch("core.config.Config.WIKI_DIR", repo_dir):
+        sync_manager = GitSyncManager(store=mock_store)
+        head = sync_manager._get_current_head()
+        assert head != "unknown"
+        assert len(head) == 40 # SHA-1 hash length
 
 def test_git_commit_logic_with_temp_repo(tmp_path):
     # Test the logic used in main.py for git commit with a real temp repo

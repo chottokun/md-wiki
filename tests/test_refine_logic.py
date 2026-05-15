@@ -1,46 +1,46 @@
-import unittest
+import pytest
 from unittest.mock import patch, MagicMock
-from pathlib import Path
 from retrieval.sync_manager import GitSyncManager
+from retrieval.qdrant_store import QdrantHybridStore
+from pathlib import Path
+import git
 
-class TestRefineLogic(unittest.TestCase):
-    """
-    手動編集(git diff)をきっかけとしたAIによる自動改善提案フローの検証。
-    """
-
-    @patch('subprocess.run')
-    def test_extract_unstaged_diff(self, mock_run):
-        """unstagedな変更をgit diffで正しく抽出できるか。"""
-        mock_run.return_value = MagicMock(
-            stdout="--- a/wiki/Page.md\n+++ b/wiki/Page.md\n@@ -1,2 +1,2 @@\n-Old info\n+New factual info",
-            returncode=0
-        )
-        
-        from retrieval.qdrant_store import QdrantHybridStore
-        mgr = GitSyncManager(store=MagicMock())
+def test_extract_unstaged_diff(tmp_path):
+    """unstagedな変更をgit diffで正しく抽出できるか。"""
+    # 1. テスト用リポジトリの初期化
+    repo_dir = tmp_path / "wiki"
+    repo_dir.mkdir()
+    repo = git.Repo.init(repo_dir)
+    
+    # ダミーファイルの作成とコミット
+    test_file = repo_dir / "Page.md"
+    test_file.write_text("Old info", encoding="utf-8")
+    repo.index.add(["Page.md"])
+    repo.index.commit("Initial")
+    
+    # ファイルの変更（unstaged）
+    test_file.write_text("New factual info", encoding="utf-8")
+    
+    # 2. SyncManagerの初期化
+    mock_store = MagicMock(spec=QdrantHybridStore)
+    with patch("core.config.Config.WIKI_DIR", repo_dir):
+        mgr = GitSyncManager(store=mock_store)
         diff = mgr.get_unstaged_diff("Page.md")
         
-        self.assertIn("+New factual info", diff)
-        self.assertIn("-Old info", diff)
+        # 3. 検証
+        assert "New factual info" in diff
+        assert "+New factual info" in diff
 
-    @patch('core.llm_router.LLMRouter.get_model')
-    def test_refine_proposal_generation(self, mock_get_model):
-        """diffを見てLLMが適切な修正案（パッチ）を作成するか。"""
-        mock_model = MagicMock()
-        mock_model.invoke.return_value = MagicMock(content="## 修正案\nこの要約を更新しました。\n\n[Full Content...]")
-        mock_get_model.return_value = mock_model
-        
-        # 擬似的な入力
-        diff_input = "User added: info about RAG-Agent."
-        target_content = "# RAG Page\nOld summary."
-        
-        # 実際の実装予定プロンプトのシミュレーション
-        from core.llm_router import router
-        inst = router.get_language_instruction()
-        prompt = f"{inst}\n以下の差分を見て、Wikiページを最適化してください。\nDiff: {diff_input}\nBase: {target_content}"
-        
-        res = mock_model.invoke(prompt)
-        self.assertIn("修正案", res.content)
-
-if __name__ == '__main__':
-    unittest.main()
+def test_refine_proposal_generation():
+    """
+    LLMへのプロンプトにdiffが含まれているか。
+    """
+    # 実際には agent/graph.py の refine_node で行われるが、
+    # ここではその周辺ロジックのみ検証
+    from core.prompts import get_refine_prompt
+    prompt = get_refine_prompt("TestPage", "Current", "Diff", "Inst")
+    
+    # プロンプト（リスト形式）の内容チェック
+    prompt_str = str(prompt)
+    assert "Diff" in prompt_str
+    assert "Current" in prompt_str

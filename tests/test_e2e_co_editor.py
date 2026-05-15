@@ -4,10 +4,12 @@ import shutil
 import subprocess
 from unittest.mock import patch, MagicMock
 from pathlib import Path
+import pytest
 from agent.graph import app
 from langgraph.types import Command
 from retrieval.qdrant_store import QdrantHybridStore
 
+@pytest.mark.ollama
 class TestE2ECoEditor(unittest.TestCase):
     """
     実リポジトリとLLMロジックを統合したE2Eテスト。

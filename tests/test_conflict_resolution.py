@@ -1,7 +1,9 @@
 import unittest
 from unittest.mock import patch, MagicMock
+import pytest
 from agent.graph import app
 
+@pytest.mark.ollama
 class TestConflictResolution(unittest.TestCase):
     """
     Gitコンフリクトマーカーを含むテキストに対するAI解決フローの検証。

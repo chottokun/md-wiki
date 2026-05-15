@@ -1,8 +1,10 @@
 import unittest
 import os
 import time
+import pytest
 from retrieval.qdrant_store import QdrantHybridStore
 
+@pytest.mark.ollama
 class TestSystemStress(unittest.TestCase):
     """
     システムの限界と極端なデータ入力に対する耐性の検証。

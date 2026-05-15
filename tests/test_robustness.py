@@ -1,10 +1,12 @@
 import unittest
 import os
+import pytest
 from pathlib import Path
 from core.llm_router import router
 from retrieval.qdrant_store import QdrantHybridStore
 from ingestion.docling_parser import DoclingParser
 
+@pytest.mark.ollama
 class TestSystemRobustness(unittest.TestCase):
     def test_language_enforcement(self):
         """環境変数による指示言語の変更が正しく反映されるか。"""

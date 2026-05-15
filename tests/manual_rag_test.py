@@ -2,10 +2,12 @@
 import sys
 import io
 
+import pytest
 sys.path.append(os.getcwd())
 from retrieval.qdrant_store import QdrantHybridStore
 from core.llm_router import router, LLMLayer
 
+@pytest.mark.ollama
 def test_rag_query():
     with open("tests/rag_result.txt", "w", encoding="utf-8") as f:
         store = QdrantHybridStore()
