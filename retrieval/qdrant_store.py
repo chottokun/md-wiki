@@ -55,9 +55,17 @@ class QdrantHybridStore:
             retrieval_mode=RetrievalMode.HYBRID,
         )
         
+        try:
+            chunk_size = int(os.getenv("CHUNK_SIZE", "400"))
+            chunk_overlap = int(os.getenv("CHUNK_OVERLAP", "50"))
+        except ValueError:
+            logger.warning("Invalid CHUNK_SIZE or CHUNK_OVERLAP environment variable. Using defaults.")
+            chunk_size = 400
+            chunk_overlap = 50
+
         self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=int(os.getenv("CHUNK_SIZE", "400")),
-            chunk_overlap=int(os.getenv("CHUNK_OVERLAP", "50")),
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
             separators=["\n\n", "\n", "。", "、", " ", ""]
         )
 
