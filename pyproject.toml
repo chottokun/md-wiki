@@ -20,3 +20,7 @@ dependencies = [
     "qdrant-client>=1.17.1",
     "ruamel-yaml>=0.19.1",
 ]
+
+[tool.setuptools.packages.find]
+include = ["agent*", "core*", "ingestion*", "output*", "retrieval*"]
+exclude = ["wiki*", "plan*", "tests*", "_raw*", "_staged*"]
