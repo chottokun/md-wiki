@@ -2,7 +2,7 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import List, Tuple, Set
+from typing import List, Tuple, Set, Optional
 import git
 from retrieval.qdrant_store import QdrantHybridStore
 from core.config import Config
@@ -78,11 +78,14 @@ class GitSyncManager:
         
         return changed_files
 
-    def perform_incremental_sync(self, include_unreviewed: bool = False):
+    def perform_incremental_sync(self, include_unreviewed: Optional[bool] = None):
         """
         差分同期を実行し、変更のあったファイルのみQdrantを更新する。
         include_unreviewed=False の場合、未審査タグがあるファイルはスキップする。
         """
+        if include_unreviewed is None:
+            include_unreviewed = Config.INCLUDE_UNREVIEWED
+
         last_hash = self._get_last_synced_hash()
         if not last_hash or last_hash == "unknown":
             logger.warning("同期履歴が見つかりません。全件同期を実行します。")

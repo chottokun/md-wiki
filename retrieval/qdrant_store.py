@@ -105,8 +105,11 @@ class QdrantHybridStore:
     def search(self, query: str, k: int = 5) -> List[Document]:
         return self.vector_store.similarity_search(query, k=k)
 
-    def sync_from_disk(self, include_unreviewed: bool = False, wiki_dir: Optional[str] = None, raw_md_dir: Optional[str] = None):
+    def sync_from_disk(self, include_unreviewed: Optional[bool] = None, wiki_dir: Optional[str] = None, raw_md_dir: Optional[str] = None):
         """ディスク上の全Wikiファイルを再スキャンしてQdrantを再構築する。"""
+        if include_unreviewed is None:
+            include_unreviewed = Config.INCLUDE_UNREVIEWED
+
         self.client.delete_collection(collection_name=self.collection_name)
         self._ensure_collection()
         

@@ -196,7 +196,7 @@ def lint_node(state: AgentState) -> Dict[str, Any]:
         data = _generate_stub_data(term, context, source_links, [], llm)
         
         # スタブ作成
-        writer.create_draft_from_schema(data, sub_dir="concepts", is_concept=True)
+        writer.create_draft_from_schema(data, sub_dir="concepts")
     
     return {"status": "linted"}
 
@@ -308,12 +308,15 @@ workflow.add_node("refine", refine_node)
 workflow.add_node("conflict", conflict_node)
 workflow.add_node("review", review_node)
 
-workflow.add_edge(START, "ingest")
 workflow.add_edge("ingest", "draft")
 workflow.add_edge("draft", "lint")
-workflow.add_edge("lint", "review")
 
 # 条件付き遷移や他のエントリーポイント
+def route_lint(state: AgentState):
+    if state.get("status") == "starting_lint":
+        return END
+    return "review"
+
 def route_start(state: AgentState):
     if state.get("status") == "starting_refine":
         return "refine"

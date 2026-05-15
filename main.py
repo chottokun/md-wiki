@@ -30,6 +30,11 @@ from retrieval.query_engine import WikiQueryEngine
 from core.config import Config
 from core.git_utils import run_git_commit
 
+# キャッシュディレクトリの構成
+os.environ.setdefault("HF_HOME", str(Config.MODELS_CACHE_DIR / "huggingface"))
+os.environ.setdefault("FASTEMBED_CACHE_PATH", str(Config.MODELS_CACHE_DIR / "fastembed"))
+Config.MODELS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
 # ロギング構成
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("rag-wiki")
@@ -38,24 +43,40 @@ logger.setLevel(logging.INFO)
 def run_workflow(input_data: Dict[str, Any], auto_approve: bool = False):
     """
     LangGraphワークフローを起動し、必要に応じて人間によるレビューを介在させる。
-    
-    Args:
-        input_data (Dict[str, Any]): 初期状態として渡すデータ。
-        auto_approve (bool): Trueの場合、人間によるレビューをスキップして自動承認する。
     """
-    # 実行セッションを識別するためのユニークなスレッドID
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
     
     print(f"\n[Workflow] Starting...")
 
+    # 1. 最初の実行 (中断点まで)
     current_state = None
-    # ワークフローのストリーミング実行
     for event in app.stream(input_data, config, stream_mode="values"):
         current_state = event
         status = event.get("status")
         if status:
             print(f"  [進捗]: {status}")
+
+    # 2. 中断されているか確認
+    snapshot = app.get_state(config)
+    if snapshot.next:
+        if auto_approve:
+            print(f"  [自動承認]: {snapshot.next[0]} ノードを実行します...")
+            # 中断をスキップして継続
+            for event in app.stream(None, config, stream_mode="values"):
+                current_state = event
+                status = event.get("status")
+                if status:
+                    print(f"  [進捗]: {status}")
+        else:
+            print(f"\n  ⏸️ ワークフローが一時停止しました ({snapshot.next[0]})")
+            print(f"  Obsidian で内容を確認し、よろしければ Enter キーを押して反映させてください。")
+            input("  (Enter で継続, Ctrl+C で中断): ")
+            for event in app.stream(None, config, stream_mode="values"):
+                current_state = event
+                status = event.get("status")
+                if status:
+                    print(f"  [進捗]: {status}")
 
     print("Done: Workflow finished.")
     if current_state and "target_page" in current_state:

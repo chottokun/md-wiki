@@ -45,8 +45,8 @@ def auto_rebuild():
     # 1. Qdrantのリセット
     # インラインスクリプトでコレクションを削除
     subprocess.run([
-        "uv", "run", "python", "-c", 
-        "from retrieval.qdrant_store import QdrantHybridStore; QdrantHybridStore().delete_collection()"
+        sys.executable, "-c", 
+        "from retrieval.qdrant_store import QdrantHybridStore; store=QdrantHybridStore(); store.delete_collection(); store.close()"
     ], check=True)
     
     # 2. Wiki Markdownファイルのリセット（concepts等のサブディレクトリも対象）
@@ -62,27 +62,32 @@ def auto_rebuild():
         for p in raw_md_dir.glob("*.md"):
             p.unlink()
     
-    # 4. インフラの確認
+    # 4. インフラとリポジトリの確認
     mode = os.getenv("QDRANT_MODE", "local")
     print(f"現在のモード: {mode}")
     
+    if not (wiki_dir / ".git").exists():
+        print("WikiディレクトリをGitリポジトリとして初期化中...")
+        subprocess.run(["git", "init", str(wiki_dir)], check=True)
+        # 初期コミットが必要な場合のために作成
+        (wiki_dir / ".gitkeep").touch()
+        subprocess.run(["git", "-C", str(wiki_dir), "add", ".gitkeep"], check=True)
+        subprocess.run(["git", "-C", str(wiki_dir), "commit", "-m", "Initial commit"], check=True)
+    
     print(f"\n再構築対象のPDFを {len(pdfs)} 件検出しました。")
+
     
     # 5. バッチ・インジェストの実行
     for pdf in pdfs:
         print(f"\n🚀 再構成プロセス開始: {pdf.name}")
         # インジェストを実行（ドラフトと未審査タグの作成）
-        subprocess.run(["uv", "run", "python", "main.py", str(pdf)], check=True)
+        subprocess.run([sys.executable, "main.py", str(pdf), "--yes"], check=True)
     
     print("\n🔄 Qdrantインデックスを同期中...")
-    # 注意: ここでは自動的に同期させたい場合、タグを外す処理が必要だが、
-    # ユーザーの意向（Obsidianでのレビュー）を尊重し、ここでは「同期」コマンドの紹介に留めるか、
-    # あるいは全てのタグを一括で外すオプションを検討する。
-    # ここでは単純に sync を呼ぶが、未審査タグがあるため、インデックスには登録されない。
-    subprocess.run(["uv", "run", "python", "main.py", "--sync"], check=True)
+    subprocess.run([sys.executable, "main.py", "--sync", "--force"], check=True)
     
     print("\n🛠️ Wikiの健康診断（Red-linkの自動起票・conceptsページの再構築）を実行中...")
-    subprocess.run(["uv", "run", "python", "main.py", "--lint"], check=True)
+    subprocess.run([sys.executable, "main.py", "--lint", "--yes"], check=True)
 
     print("\n" + "="*50)
     print("✅ 全データのドラフト再構築が完了しました。")

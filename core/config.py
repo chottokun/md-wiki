@@ -12,4 +12,8 @@ class Config:
     QDRANT_MODE: str = os.getenv("QDRANT_MODE", "local")
     QDRANT_URL: str = os.getenv("QDRANT_URL", "http://localhost:6333")
     
-    # You can add more configurations here in the future
+    # Sync configuration
+    INCLUDE_UNREVIEWED: bool = os.getenv("INCLUDE_UNREVIEWED", "false").lower() == "true"
+    
+    # Models cache directory
+    MODELS_CACHE_DIR: Path = Path(os.getenv("MODELS_CACHE_DIR", ".cache"))
