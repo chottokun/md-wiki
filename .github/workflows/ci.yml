@@ -31,7 +31,8 @@ jobs:
     - name: Run Standard Tests
       run: |
         # PYTHONPATH is set to current directory to ensure local modules are found
-        PYTHONPATH=. pytest tests/ -k "not test_security"
+        # Exclude tests marked as 'ollama' as they require external services not available in CI
+        PYTHONPATH=. pytest tests/ -m "not ollama" -k "not test_security"
 
     - name: Run Security Tests (Dynamic Analysis)
       run: |
