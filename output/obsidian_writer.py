@@ -1,6 +1,5 @@
 import os
 import re
-import yaml
 import shutil
 import logging
 from typing import Dict, Any, Optional, List
@@ -14,9 +13,11 @@ from core.schemas import WikiFrontmatterSchema
 logger = logging.getLogger(__name__)
 
 class ObsidianWriter:
-    def __init__(self, wiki_dir: Optional[str] = None):
+    def __init__(self, wiki_dir: Optional[str] = None, staged_dir: Optional[str] = None):
         self.wiki_dir = Path(wiki_dir).resolve() if wiki_dir else Config.WIKI_DIR.resolve()
         self.wiki_dir.mkdir(parents=True, exist_ok=True)
+        self.staged_dir = Path(staged_dir) if staged_dir else Path("_staged")
+        self.staged_dir.mkdir(parents=True, exist_ok=True)
 
     def _get_safe_path(self, base_dir: Path, *path_parts: str) -> Path:
         """ベースディレクトリ配下の安全なパスを生成し、ディレクトリトラバーサルを防止する。"""
@@ -255,6 +256,47 @@ class ObsidianWriter:
         if source_link: footer += f"- **Original Source**: {source_link}\n"
         if raw_link: footer += f"- **Raw Markdown**: {raw_link}\n"
         return footer
+
+    def approve_update(self, page_name: str) -> bool:
+        """
+        承認された更新をWikiに反映する。
+        """
+        safe_page_name = normalize_term(page_name)
+        filename = safe_page_name if safe_page_name.endswith(".md") else f"{safe_page_name}.md"
+        staged_path = self.staged_dir / f"{safe_page_name}_review.md"
+        wiki_path = self.wiki_dir / filename
+
+        if not staged_path.exists():
+            logger.error(f"承認対象のファイルが見つかりません: {staged_path}")
+            return False
+
+        try:
+            # レビューファイルからコンテンツを読み込む
+            content = staged_path.read_text(encoding="utf-8")
+
+            # 正規表現によるコンテンツ抽出（## Proposed Full Content から ## Agent Metadata または末尾まで）
+            # マーカーが見つからない場合はファイル全体を対象とする
+            match = re.search(r'## Proposed Full Content\n(.*?)(?:\n---\n## Agent Metadata|$)', content, re.DOTALL)
+            if match:
+                main_content = match.group(1).strip()
+            else:
+                # 後方互換性またはマーカーなしの場合のフォールバック
+                main_content = content
+                if "## Proposed Full Content\n" in main_content:
+                    main_content = main_content.split("## Proposed Full Content\n", 1)[1]
+                if "\n---\n## Agent Metadata" in main_content:
+                    main_content = main_content.split("\n---\n## Agent Metadata", 1)[0]
+
+            # Wikiファイルを更新
+            wiki_path.write_text(main_content.strip(), encoding="utf-8")
+
+            # レビュー用一時ファイルを削除（クリーンアップ）
+            staged_path.unlink()
+            logger.info(f"Wikiを更新しました: {wiki_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Wikiの更新反映中にエラーが発生しました: {str(e)}")
+            return False
 
     def add_log_entry(self, activity_type: str, details: str):
         log_path = self.wiki_dir / "log.md"
