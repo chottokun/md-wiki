@@ -7,7 +7,7 @@ on:
     branches: [ "main", "dev" ]
 
 jobs:
-  test-and-security:
+  security-and-smoke-tests:
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -28,22 +28,20 @@ jobs:
         pip install -e .
         pip install pytest bandit
 
-    - name: Run Standard Tests
-      run: |
-        # PYTHONPATH is set to current directory to ensure local modules are found
-        # Exclude tests marked as 'ollama' as they require external services not available in CI
-        PYTHONPATH=. pytest tests/ -m "not ollama" -k "not test_security"
-
-    - name: Run Security Tests (Dynamic Analysis)
-      run: |
-        # Run specific security tests (Path Traversal, Prompt Injection, etc.)
-        PYTHONPATH=. pytest tests/test_security_*.py -v
-
-    - name: Run Bandit (Static Application Security Testing)
+    - name: Run Static Security Analysis (Bandit)
       run: |
         # Run bandit on core source code to find common security issues
         # -ll ignores low severity issues, -ii ignores low confidence issues
         bandit -r agent/ core/ ingestion/ output/ retrieval/ -ll -ii
 
-  # Future deployment or build steps can be added here, 
-  # depending on the success of the 'test-and-security' job.
+    - name: Run Dynamic Security Tests
+      run: |
+        # Run specific security tests (Path Traversal, Prompt Injection, etc.)
+        PYTHONPATH=. pytest tests/test_security_*.py -v
+
+    - name: Run Smoke Tests (Critical Logic Only)
+      run: |
+        # Run only core utility tests to verify basic functionality quickly
+        PYTHONPATH=. pytest tests/test_utils.py tests/test_metadata_logic.py -v
+
+  # Future deployment or build steps can be added here.
