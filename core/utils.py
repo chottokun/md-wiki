@@ -92,7 +92,8 @@ def get_all_concepts(wiki_dir: str = "wiki") -> List[str]:
             concepts.append(name)
     return list(set(concepts))
 
-WIKI_LINK_RE = re.compile(r"\[\[(.*?)\]\]")
+# Wikiリンクの正規表現 (エイリアス [[ページ名|表示名]] や アンカー [[ページ名#セクション]] に対応)
+WIKI_LINK_RE = re.compile(r"\[\[([^|#\]]+)(?:[|#][^\]]+)?\]\]")
 
 def auto_link_concepts(body: str, concepts: List[str]) -> str:
     """本文中の用語を自動でリンク化する。
