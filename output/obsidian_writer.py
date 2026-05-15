@@ -252,10 +252,27 @@ class ObsidianWriter:
         return f"[[{rel_path}]]"
 
     def _generate_footer(self, source_link: Optional[str], raw_link: Optional[str]) -> str:
-        footer = "\n\n---\n## 🔗 リソース\n"
-        if source_link: footer += f"- **Original Source**: {source_link}\n"
-        if raw_link: footer += f"- **Raw Markdown**: {raw_link}\n"
+        footer = "\n\n---\n## 🔗 関連リンク\n"
+        if source_link:
+            footer += f"- 一次資料: {source_link}\n"
+        if raw_link:
+            footer += f"- 解析済みテキスト: {raw_link}\n"
         return footer
+
+    def page_exists(self, page_name: str) -> bool:
+        """指定されたページ名がWiki内に存在するか確認する。"""
+        safe_name = normalize_term(page_name)
+        filename = f"{safe_name}.md"
+        return (self.wiki_dir / filename).exists()
+
+    def read_page(self, page_name: str) -> Optional[str]:
+        """指定されたページの内容を読み込む。"""
+        safe_name = normalize_term(page_name)
+        filename = f"{safe_name}.md"
+        wiki_path = self.wiki_dir / filename
+        if wiki_path.exists():
+            return wiki_path.read_text(encoding="utf-8")
+        return None
 
     def approve_update(self, page_name: str) -> bool:
         """

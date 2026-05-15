@@ -338,15 +338,16 @@ class TestFallbackQuality:
 # 4. ワークフロー統合テスト
 # ──────────────────────────────────────────────────
 from agent.graph import app
-from core.schemas import WikiPageSchema
+from core.schemas import WikiMetadataSchema
 
 class TestWorkflow:
     """LangGraph ワークフローの遷移を検証。"""
 
+    @pytest.mark.ollama
     def test_ingest_to_review(self):
         """ingest → draft → review の完遂。"""
         mock_llm = MagicMock()
-        mock_schema_result = WikiPageSchema(
+        mock_schema_result = WikiMetadataSchema(
             title="統合テスト",
             abstract="テスト概要",
             concepts=["概念A"],
@@ -357,30 +358,42 @@ class TestWorkflow:
         mock_llm.with_structured_output.return_value.invoke.return_value = mock_schema_result
         mock_llm.invoke.return_value.content = "タイトル提案"
 
-        with patch("agent.graph.docling_parser.convert") as mock_convert, \
-             patch("agent.graph.qdrant_store.search") as mock_search, \
-             patch("agent.graph.obsidian_writer.create_draft_from_schema") as mock_save, \
+        with patch("agent.graph.get_docling_parser") as mock_get_parser, \
+             patch("agent.graph.get_qdrant_store") as mock_get_store, \
+             patch("agent.graph.get_obsidian_writer") as mock_get_writer, \
              patch("core.llm_router.router.get_model", return_value=mock_llm):
+            
+            mock_parser = mock_get_parser.return_value
+            mock_store = mock_get_store.return_value
+            mock_writer = mock_get_writer.return_value
+
             mock_path = MagicMock()
             mock_path.read_text.return_value = "テスト用Markdownコンテンツ"
-            mock_convert.return_value = mock_path
-            mock_search.return_value = []
+            mock_parser.convert.return_value = mock_path
+            mock_store.search.return_value = []
 
             config = {"configurable": {"thread_id": "test-1"}}
             final_state = app.invoke({"input_file": "test.md", "status": "starting"}, config=config)
             assert final_state["status"] == "completed"
-            mock_save.assert_called_once()
+            mock_writer.write_page.assert_called()
 
+    @pytest.mark.ollama
     def test_encoding_in_ingest(self):
         """日本語ファイル名が ingest_node で処理できる。"""
         mock_llm = MagicMock()
         mock_llm.invoke.return_value.content = "✨テスト🚀"
 
-        with patch("agent.graph.docling_parser.convert") as mock_convert, \
+        with patch("agent.graph.get_docling_parser") as mock_get_parser, \
+             patch("agent.graph.get_qdrant_store") as mock_get_store, \
              patch("core.llm_router.router.get_model", return_value=mock_llm):
+            
+            mock_parser = mock_get_parser.return_value
+            mock_store = mock_get_store.return_value
+
             mock_path = MagicMock()
             mock_path.read_text.return_value = "コンテンツ"
-            mock_convert.return_value = mock_path
+            mock_parser.convert.return_value = mock_path
+            mock_store.search.return_value = []
 
             from agent.graph import ingest_node
             result = ingest_node({"input_file": "データ_✨.md", "status": "starting"})

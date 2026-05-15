@@ -24,7 +24,7 @@ if sys.platform == "win32":
         sys.stdout.reconfigure(encoding='utf-8', errors='replace')
         sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
-from agent.graph import app, qdrant_store
+from agent.graph import app, get_qdrant_store
 from core.llm_router import router, LLMLayer
 from retrieval.query_engine import WikiQueryEngine
 from core.config import Config
@@ -74,7 +74,8 @@ def run_query(query: str):
     print(f"\n[Search] Searching knowledge base for: '{query}'")
     
     # WikiQueryEngine を使用して回答を生成
-    engine = WikiQueryEngine(qdrant_store, router)
+    store = get_qdrant_store()
+    engine = WikiQueryEngine(store, router)
     answer = engine.query(query)
     
     # 質問への回答活動をログに記録
@@ -109,7 +110,8 @@ if __name__ == "__main__":
                 print("洗練対象のWikiページ名（またはファイルパス）を入力してください。")
             else:
                 from retrieval.sync_manager import GitSyncManager
-                mgr = GitSyncManager(qdrant_store)
+                store = get_qdrant_store()
+                mgr = GitSyncManager(store)
                 filename = args.input if args.input.endswith(".md") else f"{args.input}.md"
                 full_path = Config.WIKI_DIR / filename
                 
@@ -125,13 +127,9 @@ if __name__ == "__main__":
                             "raw_markdown": content
                         }, auto_approve=args.yes)
                     else:
-                        # git diff を取得するために、wikiリポジトリ内での相対パスを渡す
-                        # full_path.name だけだとサブディレクトリに対応できないため、
-                        # WIKI_DIR からの相対パスを計算する
                         rel_path = full_path.relative_to(Config.WIKI_DIR)
                         diff = mgr.get_unstaged_diff(str(rel_path))
                         
-                        # 差分がない場合、または新規ファイルの場合は、ファイル全体を対象にする
                         if not diff:
                             logger.info("未コミットの差分が見つからないため、ファイル全体を対象に洗練を実行します。")
                             diff = content
@@ -145,7 +143,8 @@ if __name__ == "__main__":
             print("\n[Sync] Synchronizing Qdrant index and Git...")
             print("Note: Files with '#未審査' tag will be skipped.")
             from retrieval.sync_manager import GitSyncManager
-            sync_mgr = GitSyncManager(qdrant_store)
+            store = get_qdrant_store()
+            sync_mgr = GitSyncManager(store)
             sync_mgr.perform_incremental_sync(include_unreviewed=args.force)
             from output.obsidian_writer import ObsidianWriter
             ObsidianWriter().add_log_entry("sync", "Performed incremental synchronization.")
@@ -163,5 +162,6 @@ if __name__ == "__main__":
         else:
             parser.print_help()
     finally:
-        if 'qdrant_store' in globals():
-            qdrant_store.close()
+        from agent.graph import _qdrant_store
+        if _qdrant_store is not None:
+            _qdrant_store.close()

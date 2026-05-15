@@ -43,7 +43,14 @@ class QdrantHybridStore:
             model=os.getenv("EMBEDDING_MODEL", "mxbai-embed-large"),
             base_url=os.getenv("LOCALLLM_BASE_URL", "http://localhost:11434")
         )
-        self.sparse_embeddings = FastEmbedSparse(model_name="Qdrant/bm25")
+        
+        if os.getenv("SKIP_SPARSE_EMBEDDINGS", "false").lower() == "true":
+            logger.warning("SKIP_SPARSE_EMBEDDINGS is true. Sparse embeddings (BM25) will be disabled.")
+            self.sparse_embeddings = None
+            retrieval_mode = RetrievalMode.DENSE
+        else:
+            self.sparse_embeddings = FastEmbedSparse(model_name="Qdrant/bm25")
+            retrieval_mode = RetrievalMode.HYBRID
 
         self._ensure_collection()
 
@@ -52,7 +59,7 @@ class QdrantHybridStore:
             collection_name=self.collection_name,
             embedding=self.embeddings,
             sparse_embedding=self.sparse_embeddings,
-            retrieval_mode=RetrievalMode.HYBRID,
+            retrieval_mode=retrieval_mode,
         )
         
         try:
