@@ -97,9 +97,13 @@ def _find_red_links(wiki_dir: Path) -> Set[str]:
             content = p.read_text(encoding="utf-8")
             links = re.findall(r"\[\[(.*?)\]\]", content)
             for link in links:
-                term = link.split("|")[0].strip().strip("[]")
-                if not term or "/" in term or term == "Home": continue
+                # エイリアスやアンカーを分離
+                term = link.split("|")[0].split("#")[0].strip().strip("[]")
+                # フォルダパス、空文字、Home、画像ファイルなどはスキップ
+                if not term or "/" in term or "\\" in term or term == "Home": continue
+                if term.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg', '.gif')): continue
                 if ":" in term: continue
+                
                 norm_term = normalize_term(term)
                 if not is_technical_term(term) or not is_technical_term(norm_term): continue
                 if norm_term not in existing_normalized_names:
@@ -190,13 +194,21 @@ def lint_node(state: AgentState) -> Dict[str, Any]:
     if not red_links: return {"status": "linted"}
 
     llm = router.get_model(LLMLayer.L1)
-    for term in list(red_links)[:5]: # 1回につき最大5つまで
+    # 重複を避けるために現在の concepts フォルダの中身も考慮
+    existing_concepts = {p.stem for p in (writer.wiki_dir / "concepts").glob("*.md")}
+    
+    count = 0
+    for term in sorted(list(red_links)):
+        if normalize_term(term) in existing_concepts: continue
+        
         logger.info(f"🔍 Generating stub for: {term}")
         context, sources, source_links = _fetch_context(term, llm)
         data = _generate_stub_data(term, context, source_links, [], llm)
         
         # スタブ作成
         writer.create_draft_from_schema(data, sub_dir="concepts")
+        count += 1
+        if count >= 5: break # 1回につき最大5つまで
     
     return {"status": "linted"}
 
@@ -291,12 +303,21 @@ def review_node(state: AgentState) -> Dict[str, Any]:
     target = state['target_page']
     content = state['proposed_content']
     
+    input_path = state.get("input_file")
+    raw_md = state.get("raw_markdown")
+
     writer = get_obsidian_writer()
-    # レビュー用ファイルの作成
-    save_path = writer.create_draft_file(target, content)
+    # レビュー用ファイルの作成 (ソース情報も引き継ぐ)
+    save_path = writer.create_draft_file(
+        target, 
+        content,
+        source_filename=Path(input_path).name if input_path else None,
+        source_path=input_path,
+        raw_markdown=raw_md
+    )
     logger.info(f"📝 Review draft created: {save_path}")
     
-    return {"status": "reviewed"}
+    return {"target_page": target, "proposed_content": content, "status": "reviewed"}
 
 # グラフ構成
 workflow = StateGraph(AgentState)
@@ -308,12 +329,11 @@ workflow.add_node("refine", refine_node)
 workflow.add_node("conflict", conflict_node)
 workflow.add_node("review", review_node)
 
-workflow.add_edge("ingest", "draft")
-workflow.add_edge("draft", "lint")
-
 # 条件付き遷移や他のエントリーポイント
 def route_lint(state: AgentState):
-    if state.get("status") == "starting_lint":
+    # status が linted かつ 元の入力に maintenance_topic や input_file がない場合は終了
+    # ただし、現状は starting_lint というフラグで判別するのが確実
+    if state.get("status") == "linted" and not state.get("input_file") and not state.get("maintenance_topic"):
         return END
     return "review"
 
@@ -327,9 +347,13 @@ def route_start(state: AgentState):
     return "ingest"
 
 workflow.add_conditional_edges(START, route_start)
+workflow.add_edge("ingest", "draft")
+workflow.add_edge("draft", "lint")
+workflow.add_conditional_edges("lint", route_lint, {"review": "review", END: END})
 workflow.add_edge("refine", "review")
 workflow.add_edge("conflict", "review")
 workflow.add_edge("review", END)
 
 # reviewノードの直前で一時停止する設定
+# チェックポインターを MemorySaver に戻し、一時停止を再有効化
 app = workflow.compile(checkpointer=MemorySaver(), interrupt_before=["review"])

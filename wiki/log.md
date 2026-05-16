@@ -24,3 +24,27 @@
 ## [2026-05-16 08:36] ingest | Drafted 知識集約型nlpタスクのための検索強化生成_2024
 ## [2026-05-16 08:42] ingest | Drafted 自己反射型rag_2024
 ## [2026-05-16 08:43] sync | Performed incremental synchronization.
+## [2026-05-16 08:59] ingest | Drafted corrective_retrieval_augmented_generation(crag)_2024
+## [2026-05-16 09:04] ingest | Drafted 知識集約型nlpタスクのための検索強化生成_2024
+## [2026-05-16 09:09] ingest | Drafted 自己反射型rag自己学習による取得・生成・批評_2024
+## [2026-05-16 09:10] sync | Performed incremental synchronization.
+## [2026-05-16 09:22] ingest | Drafted 修正リトリーバル拡張生成_crag_2024
+## [2026-05-16 09:26] ingest | Drafted 知識集約型nlpタスクにおける検索強化生成_2023
+## [2026-05-16 09:32] ingest | Drafted 自己反射型rag自己学習による検索・生成・批評_2024
+## [2026-05-16 09:33] sync | Performed incremental synchronization.
+## [2026-05-16 09:42] ingest | Drafted 正誤修正検索強化生成_2024
+## [2026-05-16 09:47] ingest | Drafted corrective_retrieval_augmented_generation_(crag)_によるロバスト生成手法_2024
+## [2026-05-16 09:52] ingest | Drafted 補正検索拡張生成_(crag)_の概要_2024
+## [2026-05-16 09:57] ingest | Drafted 補正検索拡張生成_(crag)_の手法と評価_2024
+## [2026-05-16 10:08] ingest | Drafted 修正型検索拡張生成によるllmハルシネーション低減_2024
+## [2026-05-16 10:13] ingest | Drafted 知識集約型nlpタスクへのリトリーバル拡張生成_概要
+## [2026-05-16 10:19] ingest | Drafted 自己反射型rag取得・生成・批判の自己学習_2024
+## [2026-05-16 10:25] sync | Performed incremental synchronization.
+## [2026-05-16 10:33] ingest | Drafted 補正型検索強化生成_(crag)_の概要と評価_2024
+## [2026-05-16 10:37] ingest | Drafted 知識集約型nlpタスクにおける取得強化生成_概説
+## [2026-05-16 10:43] ingest | Drafted 自己反射型rag自己学習による取得・生成・批評_2024
+## [2026-05-16 10:51] sync | Performed incremental synchronization.
+## [2026-05-16 11:14] ingest | Drafted llmハルシネーション抑制のための補正検索拡張生成_(crag)
+## [2026-05-16 11:19] ingest | Drafted リトリーバル拡張生成と知識集約型nlpタスク_2024
+## [2026-05-16 11:24] ingest | Drafted self-rag自己反省による検索・生成・批評の統合
+## [2026-05-16 11:32] sync | Performed incremental synchronization.

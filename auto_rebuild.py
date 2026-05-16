@@ -55,12 +55,19 @@ def auto_rebuild():
         if p.name not in ["Home.md", "log.md"] and "raw_markdown" not in str(p) and "sources" not in str(p):
             p.unlink()
     
-    # 3. 生Markdown抽出データのリセット
+    # 3. 生Markdown抽出データとソースファイルの法のリセット
     raw_md_dir = wiki_dir / "raw_markdown"
     if raw_md_dir.exists():
         print("抽出済みRaw Markdownデータをクリア中...")
         for p in raw_md_dir.glob("*.md"):
             p.unlink()
+
+    sources_dir = wiki_dir / "sources"
+    if sources_dir.exists():
+        print("コピー済みソースファイルをクリア中...")
+        for p in sources_dir.glob("*"):
+            if p.is_file() and p.name != ".gitkeep":
+                p.unlink()
     
     # 4. インフラとリポジトリの確認
     mode = os.getenv("QDRANT_MODE", "local")

@@ -218,23 +218,28 @@ class ObsidianWriter:
         # 出力先パスの検証
         target_path = self._get_safe_path(sources_dir, filename)
 
-        # 入力ソースパスの制限（_raw ディレクトリ配下のみ許可）
-        raw_base = Path("_raw").resolve()
+        # 入力ソースパスの決定
         if source_path:
             src = Path(source_path).resolve()
-            try:
-                src.relative_to(raw_base)
-            except ValueError:
-                logger.warning(f"External source path blocked: {source_path}. Using default _raw location.")
-                src = raw_base / Path(filename).name
         else:
+            # _raw ディレクトリを探す
+            raw_base = Path("_raw").resolve()
             src = raw_base / Path(filename).name
 
         if not src.exists():
-            src = raw_base / Path(filename).name
+            # 相対パスでの検索も試行
+            src = Path(filename).resolve()
+
+        logger.info(f"  [File] Attempting to copy source: {src} -> {target_path}")
             
         if src.exists() and src.is_file():
-            shutil.copy2(src, target_path)
+            try:
+                shutil.copy2(src, target_path)
+                logger.info(f"  [File] Successfully copied source file.")
+            except Exception as e:
+                logger.error(f"  [File] Failed to copy source file: {e}")
+        else:
+            logger.warning(f"  [File] Source file not found: {src}")
 
         rel_path = target_path.relative_to(self.wiki_dir)
         return f"[[{rel_path}]]"
@@ -247,7 +252,13 @@ class ObsidianWriter:
         filename = f"{name}.md" if not name.endswith(".md") else name
         raw_path = self._get_safe_path(raw_dir, filename)
 
-        raw_path.write_text(content, encoding="utf-8")
+        logger.info(f"  [File] Writing raw markdown: {raw_path} (length: {len(content)})")
+        try:
+            raw_path.write_text(content, encoding="utf-8")
+            logger.info(f"  [File] Successfully wrote raw markdown.")
+        except Exception as e:
+            logger.error(f"  [File] Failed to write raw markdown: {e}")
+
         rel_path = raw_path.relative_to(self.wiki_dir)
         return f"[[{rel_path}]]"
 
