@@ -232,19 +232,23 @@ class ObsidianWriter:
             "abstract": data.get("abstract", "")
         }
         
+        # LLMが誤って生成した # タイトル や > [!abstract] コールアウトを本文から削除
+        clean_body = re.sub(r'^#\s+.*?\n+', '', clean_body, count=1).strip()
+        clean_body = re.sub(r'^>\s*\[!abstract\].*?(?:\n>.*)*\n+', '', clean_body, flags=re.MULTILINE | re.IGNORECASE).strip()
+        
         concepts_str = "\n".join([f"- {c}" for c in data.get("concepts", [])])
+        
         final_body = f"""# {page_name}
 
 > [!abstract] 要約
 > {data.get('abstract', '')}
 
-## 詳細解説
 {clean_body}
 
 ## 💡 主要な概念
 {concepts_str}
 """
-        full_content = f"{dump_frontmatter(metadata)}\n\n{final_body}"
+        full_content = f"{dump_frontmatter(metadata)}\n\n{final_body.strip()}"
         return self.create_draft_file(
             page_name, 
             full_content, 
