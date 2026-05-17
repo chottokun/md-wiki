@@ -42,10 +42,28 @@ class QdrantHybridStore:
             self.client = QdrantClient(path=q_path)
 
         
-        self.embeddings = OllamaEmbeddings(
-            model=os.getenv("EMBEDDING_MODEL", "mxbai-embed-large"),
-            base_url=os.getenv("LOCALLLM_BASE_URL", "http://localhost:11434")
-        )
+        import urllib.request
+        ollama_running = False
+        ollama_url = os.getenv("LOCALLLM_BASE_URL", "http://localhost:11434")
+        try:
+            with urllib.request.urlopen(ollama_url, timeout=1.0) as response:
+                if response.status == 200:
+                    ollama_running = True
+        except Exception:
+            pass
+
+        if ollama_running:
+            logger.info("Ollama is running. Using OllamaEmbeddings.")
+            self.embeddings = OllamaEmbeddings(
+                model=os.getenv("EMBEDDING_MODEL", "mxbai-embed-large"),
+                base_url=ollama_url
+            )
+        else:
+            logger.info("Ollama is not running. Falling back to local FastEmbedEmbeddings with mixedbread-ai/mxbai-embed-large-v1.")
+            from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
+            self.embeddings = FastEmbedEmbeddings(
+                model_name="mixedbread-ai/mxbai-embed-large-v1"
+            )
         self.sparse_embeddings = FastEmbedSparse(model_name="Qdrant/bm25")
 
         self._ensure_collection()

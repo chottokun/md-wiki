@@ -72,14 +72,11 @@ def auto_rebuild():
     for pdf in pdfs:
         print(f"\n🚀 再構成プロセス開始: {pdf.name}")
         # インジェストを実行（ドラフトと未審査タグの作成）
-        subprocess.run(["uv", "run", "python", "main.py", str(pdf)], check=True)
+        subprocess.run(["uv", "run", "python", "main.py", str(pdf), "--yes"], check=True)
     
     print("\n🔄 Qdrantインデックスを同期中...")
-    # 注意: ここでは自動的に同期させたい場合、タグを外す処理が必要だが、
-    # ユーザーの意向（Obsidianでのレビュー）を尊重し、ここでは「同期」コマンドの紹介に留めるか、
-    # あるいは全てのタグを一括で外すオプションを検討する。
-    # ここでは単純に sync を呼ぶが、未審査タグがあるため、インデックスには登録されない。
-    subprocess.run(["uv", "run", "python", "main.py", "--sync"], check=True)
+    # 未審査タグがあっても強制的にインデックス化する
+    subprocess.run(["uv", "run", "python", "main.py", "--sync", "--force"], check=True)
     
     print("\n🛠️ Wikiの健康診断（Red-linkの自動起票・conceptsページの再構築）を実行中...")
     subprocess.run(["uv", "run", "python", "main.py", "--lint"], check=True)

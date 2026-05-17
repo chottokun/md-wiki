@@ -54,7 +54,7 @@ class WikiFrontmatterSchema(BaseModel):
     def _check_abstract(cls, v: Any) -> str:
         if not v or v in ["---", "自動生成スタブ", "None", "要約なし"]:
             # 無意味な値は空にする（再生成を促すため、あるいはデフォルト値を入れる）
-            return "本文を参照してください（要約抽出中）。"
+            return "(自動生成スタブ: 本文の内容に基づき後日更新予定)"
         if isinstance(v, str) and len(v) < 10:
             return f"{v}（詳細な要約が不足しています）"
         return v

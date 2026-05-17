@@ -159,7 +159,7 @@ def _generate_stub_data(term: str, context: str, source_links: list, evidences: 
         final_body = auto_link_concepts(clean_body, concepts)
         data = {
             "title": normalize_term(term.strip().replace("[[", "").replace("]]", "")),
-            "abstract": "自動生成スタブ",
+            "abstract": "(自動生成スタブ)",
             "concepts": concepts,
             "body": final_body,
             "tags": tags,

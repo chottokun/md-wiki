@@ -284,7 +284,7 @@ class ObsidianWriter:
         if src.exists() and src.is_file():
             shutil.copy2(src, target_path)
 
-        rel_path = target_path.relative_to(self.wiki_dir)
+        rel_path = target_path.relative_to(self.wiki_dir).as_posix()
         return f"[[{rel_path}]]"
 
     def _handle_raw_markdown(self, name: str, content: Optional[str]) -> Optional[str]:
@@ -296,7 +296,7 @@ class ObsidianWriter:
         raw_path = self._get_safe_path(raw_dir, filename)
 
         raw_path.write_text(content, encoding="utf-8")
-        rel_path = raw_path.relative_to(self.wiki_dir)
+        rel_path = raw_path.relative_to(self.wiki_dir).as_posix()
         return f"[[{rel_path}]]"
 
     def _generate_footer(self, source_link: Optional[str], raw_link: Optional[str]) -> str:
