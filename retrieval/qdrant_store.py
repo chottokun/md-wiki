@@ -1,11 +1,13 @@
-import os
 import logging
+import os
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
+from dotenv import load_dotenv
 from langchain_core.documents import Document
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_qdrant import QdrantVectorStore, RetrievalMode, FastEmbedSparse
 from langchain_ollama import OllamaEmbeddings
+from langchain_qdrant import FastEmbedSparse, QdrantVectorStore, RetrievalMode
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest_models
 
@@ -20,12 +22,12 @@ class QdrantHybridStore:
     def __init__(
         self,
         collection_name: str = "rag_wiki",
+        path: Optional[str] = None
     ):
-        from dotenv import load_dotenv
         load_dotenv()
         self.collection_name = collection_name
         self.wiki_dir = Path("wiki")
-        
+
         mode = os.getenv("QDRANT_MODE", "local")
         if mode == "server":
             url = os.getenv("QDRANT_URL", "http://localhost:6333")
@@ -35,22 +37,34 @@ class QdrantHybridStore:
             logger.info("Qdrantをインメモリモードで初期化します。")
             self.client = QdrantClient(location=":memory:")
         else:
-            path = "./qdrant_data"
-            logger.info(f"Qdrantをローカルモード({path})で初期化します。")
-            self.client = QdrantClient(path=path)
+            q_path = path or os.getenv("QDRANT_PATH", "./qdrant_data")
+            logger.info(f"Qdrantをローカルモード({q_path})で初期化します。")
+            self.client = QdrantClient(path=q_path)
+
         
-        self.embeddings = OllamaEmbeddings(
-            model=os.getenv("EMBEDDING_MODEL", "mxbai-embed-large"),
-            base_url=os.getenv("LOCALLLM_BASE_URL", "http://localhost:11434")
-        )
-        
-        if os.getenv("SKIP_SPARSE_EMBEDDINGS", "false").lower() == "true":
-            logger.warning("SKIP_SPARSE_EMBEDDINGS is true. Sparse embeddings (BM25) will be disabled.")
-            self.sparse_embeddings = None
-            retrieval_mode = RetrievalMode.DENSE
+        import urllib.request
+        ollama_running = False
+        ollama_url = os.getenv("LOCALLLM_BASE_URL", "http://localhost:11434")
+        try:
+            with urllib.request.urlopen(ollama_url, timeout=1.0) as response:
+                if response.status == 200:
+                    ollama_running = True
+        except Exception:
+            pass
+
+        if ollama_running:
+            logger.info("Ollama is running. Using OllamaEmbeddings.")
+            self.embeddings = OllamaEmbeddings(
+                model=os.getenv("EMBEDDING_MODEL", "mxbai-embed-large"),
+                base_url=ollama_url
+            )
         else:
-            self.sparse_embeddings = FastEmbedSparse(model_name="Qdrant/bm25")
-            retrieval_mode = RetrievalMode.HYBRID
+            logger.info("Ollama is not running. Falling back to local FastEmbedEmbeddings with mixedbread-ai/mxbai-embed-large-v1.")
+            from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
+            self.embeddings = FastEmbedEmbeddings(
+                model_name="mixedbread-ai/mxbai-embed-large-v1"
+            )
+        self.sparse_embeddings = FastEmbedSparse(model_name="Qdrant/bm25")
 
         self._ensure_collection()
 
@@ -99,8 +113,11 @@ class QdrantHybridStore:
         documents = self.get_chunks(text, metadata)
         self.add_documents(documents)
 
-    def add_documents(self, documents: List[Document]):
-        self.vector_store.add_documents(documents)
+    def add_documents(self, documents: List[Document], batch_size: int = 100):
+        """ドキュメントをバッチサイズごとに分割して登録する。"""
+        for i in range(0, len(documents), batch_size):
+            batch = documents[i : i + batch_size]
+            self.vector_store.add_documents(batch)
 
     def search(self, query: str, k: int = 5) -> List[Document]:
         return self.vector_store.similarity_search(query, k=k)
@@ -138,11 +155,10 @@ class QdrantHybridStore:
         
         if all_documents:
             self.add_documents(all_documents)
-            
+
         logger.info("全件同期が完了しました。")
 
     def delete_source(self, source_name: str):
-        from qdrant_client.http import models as rest_models
         self.client.delete(
             collection_name=self.collection_name,
             points_selector=rest_models.Filter(

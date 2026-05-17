@@ -34,18 +34,36 @@ def test_full_workflow_ingest_to_review():
 
         mock_path = MagicMock()
         mock_path.read_text.return_value = "テスト用Markdownコンテンツ"
-        mock_parser.convert.return_value = mock_path
-        mock_store.search.return_value = []
-
-        # ワークフローの実行
-        config = {"configurable": {"thread_id": "test-workflow-thread"}}
-        # reviewノードで中断される
-        final_state = app.invoke({"input_file": "dummy.pdf", "status": "starting"}, config=config)
+        mock_convert.return_value = mock_path
+        mock_search.return_value = []
+        
+        # 実行
+        initial_state = {
+            "input_file": "test.md",
+            "status": "starting"
+        }
+        
+        # ワークフローを実行 (thread_idが必要)
+        config = {"configurable": {"thread_id": "test-thread"}}
+        # 第一段階: interrupt_before=["review"] により一時停止
+        final_state = app.invoke(initial_state, config=config)
         
         # 検証
-        assert final_state["status"] == "reviewed"
-        # factory経由で取得されたwriterのメソッドが呼ばれたか
-        mock_writer.create_draft_file.assert_called()
+        # ステータスは一時停止時点で 'drafted' になっているはず
+        assert final_state["status"] == "drafted"
+
+        # 第二段階: 再開 (None を渡すことで次のノード 'review' を実行)
+        final_state = app.invoke(None, config=config)
+        
+        # 検証
+        # 1. 各ノードを通ったか（ステータスの変遷）
+        # ステータスは最終的に 'completed' (review_nodeの戻り値) になっているはず
+        assert final_state["status"] == "completed"
+        
+        # 2. ファイル保存が呼ばれたか
+        mock_save.assert_called_once()
+        saved_data = mock_save.call_args[0][0]
+        assert saved_data["title"] == "統合テスト"
 
 @pytest.mark.ollama
 def test_encoding_in_workflow():

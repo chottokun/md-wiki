@@ -44,10 +44,12 @@ class TestWikiQueryEngine(unittest.TestCase):
         args, _ = self.mock_model.invoke.call_args
         prompt = args[0]
         
-        # プロンプトがリスト形式（(role, content)）であることを前提に文字列化してチェック
+        # プロンプトがリスト形式（[('system', '...'), ('user', '...')]) の場合、文字列に変換して検証
         prompt_str = str(prompt)
-
+        
         self.assertIn("LinkedConcept は重要な技術です。", prompt_str)
+        self.assertIn("Original", prompt_str)
+        self.assertIn("日本語で回答してください。", prompt_str)
 
     @patch('pathlib.Path.glob')
     @patch('pathlib.Path.read_text')

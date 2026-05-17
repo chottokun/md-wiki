@@ -88,10 +88,11 @@ def auto_rebuild():
     for pdf in pdfs:
         print(f"\n🚀 再構成プロセス開始: {pdf.name}")
         # インジェストを実行（ドラフトと未審査タグの作成）
-        subprocess.run([sys.executable, "main.py", str(pdf), "--yes"], check=True)
+        subprocess.run(["uv", "run", "python", "main.py", str(pdf), "--yes"], check=True)
     
     print("\n🔄 Qdrantインデックスを同期中...")
-    subprocess.run([sys.executable, "main.py", "--sync", "--force"], check=True)
+    # 未審査タグがあっても強制的にインデックス化する
+    subprocess.run(["uv", "run", "python", "main.py", "--sync", "--force"], check=True)
     
     print("\n🛠️ Wikiの健康診断（Red-linkの自動起票・conceptsページの再構築）を実行中...")
     subprocess.run([sys.executable, "main.py", "--lint", "--yes"], check=True)

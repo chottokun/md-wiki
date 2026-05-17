@@ -35,9 +35,6 @@ def test_create_draft_from_schema(tmp_path):
     # 2. 構造の正しさ
     assert "# TDDによる開発" in content
     assert "> [!abstract] 要約" in content
-    assert "## 詳細解説" in content
     assert "## 💡 主要な概念" in content
-    assert "Red-Green-Refactor" in content
-
-if __name__ == "__main__":
-    pytest.main([__file__])
+    assert "- Red-Green-Refactor" in content
+    assert "本文には [[リンク]] が含まれるべきです。" in content

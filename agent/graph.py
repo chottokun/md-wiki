@@ -162,7 +162,7 @@ def _generate_stub_data(term: str, context: str, source_links: list, evidences: 
         final_body = auto_link_concepts(clean_body, all_targets)
         filtered_concepts = [c for c in metadata.concepts if c.lower() not in ["用語名", "title", "abstract", "concept"]]
         data = {
-            "title": metadata.title.strip().replace("[[", "").replace("]]", ""),
+            "title": normalize_term(metadata.title.strip().replace("[[", "").replace("]]", "")),
             "abstract": metadata.abstract,
             "concepts": filtered_concepts,
             "body": final_body,
@@ -177,11 +177,11 @@ def _generate_stub_data(term: str, context: str, source_links: list, evidences: 
             new_concepts = parse_and_filter_concepts(raw_concepts)
         except: new_concepts = []
         data = {
-            "title": normalize_term(term),
-            "abstract": clean_body[:200].replace("\n", " "),
-            "concepts": new_concepts,
-            "body": clean_body,
-            "tags": ["auto-stub"],
+            "title": normalize_term(term.strip().replace("[[", "").replace("]]", "")),
+            "abstract": "(自動生成スタブ)",
+            "concepts": concepts,
+            "body": final_body,
+            "tags": tags,
             "aliases": []
         }
     return data
@@ -255,19 +255,95 @@ def refine_node(state: AgentState) -> Dict[str, Any]:
     prompt = get_refine_prompt(target, current, diff, lang_inst)
     
     try:
-        structured_llm = llm.with_structured_output(WikiMetadataSchema)
-        proposed_data = structured_llm.invoke(prompt)
-        proposed_content = proposed_data.generate_markdown()
+        result = structured_llm.invoke(prompt)
+        proposed_data = result.model_dump()
+        proposed_data["title"] = normalize_term(proposed_data.get("title") or state['target_page'])
+        return {"proposed_data": proposed_data, "status": "refined"}
     except Exception as e:
-        logger.warning(f"Structured output failed in refine_node: {e}. Trying manual JSON extraction.")
-        res = llm.invoke(prompt).content
-        json_str = extract_json_from_text(res)
-        if json_str:
-            try:
-                proposed_data = WikiMetadataSchema.model_validate_json(json_str)
-                proposed_content = proposed_data.generate_markdown()
-            except: proposed_content = res
-        else: proposed_content = res
+        logger.warning(f"Structured output failed for refine_node: {e}. Falling back to text.")
+        raw_text = llm.invoke(prompt).content
+        fallback_data = {
+            "title": normalize_term(state['target_page']),
+            "abstract": "更新されたコンテンツ（自動抽出失敗）",
+            "concepts": [],
+            "body": raw_text,
+            "tags": ["auto-updated"],
+            "aliases": []
+        }
+        return {"proposed_data": fallback_data, "status": "refined"}
+
+def draft_node(state: AgentState) -> Dict[str, Any]:
+    """新規Wikiドラフト作成。"""
+    llm = router.get_model(LLMLayer.L2)
+    context = "\n\n".join([f"Source: {d.metadata.get('source')}\n{d.page_content}" for d in state["retrieved_docs"]])
+    
+    body_prompt = get_draft_body_prompt(state['target_page'], state['raw_markdown'], context)
+    body_text = llm.invoke(body_prompt).content
+    _, clean_body = parse_frontmatter(body_text)
+    if not clean_body.strip(): clean_body = body_text
+    
+    metadata_prompt = get_metadata_prompt(clean_body, state['target_page'])
+    try:
+        metadata = None
+        try:
+            metadata_llm = llm.with_structured_output(WikiMetadataSchema)
+            metadata = metadata_llm.invoke(metadata_prompt)
+        except Exception as se:
+            logger.warning(f"Structured output failed in draft_node: {se}. Trying manual JSON extraction.")
+            raw_res = llm.invoke(metadata_prompt).content
+            json_str = extract_json_from_text(raw_res)
+            if json_str:
+                metadata = WikiMetadataSchema(**json.loads(json_str))
+        
+        if not metadata: raise ValueError("Could not extract metadata as JSON")
+        
+        global_concepts = get_all_concepts()
+        all_targets = list(set(metadata.concepts + global_concepts))
+        final_body = auto_link_concepts(clean_body, all_targets)
+        
+        proposed_data = {
+            "title": normalize_term(metadata.title.strip().replace("[[", "").replace("]]", "")),
+            "abstract": metadata.abstract,
+            "concepts": metadata.concepts,
+            "body": final_body,
+            "tags": metadata.tags,
+            "aliases": metadata.aliases or [],
+            "source_filename": state.get("source_filename"),
+            "source_path": state.get("input_file"),
+            "raw_markdown": state.get("raw_markdown")
+        }
+    except Exception as e:
+        logger.warning(f"Metadata extraction failed: {e}. Extracting from text via fallback LLM.")
+        fallback_prompt = get_fallback_prompt(clean_body)
+        try:
+            raw_concepts = llm.invoke(fallback_prompt).content
+            new_concepts = parse_and_filter_concepts(raw_concepts)
+        except Exception as e2:
+            new_concepts = []
+
+        found_links = list(set(WIKI_LINK_RE.findall(clean_body)))
+        link_concepts = [l.split("|")[0].strip().replace("[[", "").replace("]]", "") for l in found_links]
+        global_concepts = get_all_concepts()
+        concepts = list(set(new_concepts + link_concepts + global_concepts))
+        
+        tags = ["auto-draft"] + [c for c in new_concepts if len(c) <= 15 and " " not in c][:5]
+        paragraphs = [p.strip() for p in clean_body.split("\n\n") if p.strip() and not p.strip().startswith("#")]
+        abstract = paragraphs[0][:200] if paragraphs else "自動生成"
+        final_body = auto_link_concepts(clean_body, concepts)
+        
+        proposed_data = {
+            "title": normalize_term(state['target_page'].strip().replace("[[", "").replace("]]", "")),
+            "abstract": abstract,
+            "concepts": concepts,
+            "body": final_body,
+            "tags": tags,
+            "aliases": [],
+            "source_filename": state.get("source_filename"),
+            "source_path": state.get("input_file"),
+            "raw_markdown": state.get("raw_markdown")
+        }
+    
+    return {"proposed_data": proposed_data, "status": "drafted"}
 
     return {"proposed_content": proposed_content, "status": "refined"}
 
@@ -354,6 +430,4 @@ workflow.add_edge("refine", "review")
 workflow.add_edge("conflict", "review")
 workflow.add_edge("review", END)
 
-# reviewノードの直前で一時停止する設定
-# チェックポインターを MemorySaver に戻し、一時停止を再有効化
 app = workflow.compile(checkpointer=MemorySaver(), interrupt_before=["review"])

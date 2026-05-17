@@ -57,31 +57,16 @@ def run_workflow(input_data: Dict[str, Any], auto_approve: bool = False):
         if status:
             print(f"  [進捗]: {status}")
 
-    # 2. 中断されているか確認 (チェックポインターが設定されている場合のみ)
-    try:
-        snapshot = app.get_state(config)
-        if snapshot.next:
-            if auto_approve:
-                print(f"  [自動承認]: {snapshot.next[0]} ノードを実行します...")
-                # 中断をスキップして継続
-                for event in app.stream(None, config, stream_mode="values"):
-                    current_state = event
-                    status = event.get("status")
-                    if status:
-                        print(f"  [進捗]: {status}")
-            else:
-                print(f"\n  ⏸️ ワークフローが一時停止しました ({snapshot.next[0]})")
-                print(f"  Obsidian で内容を確認し、よろしければ Enter キーを押して反映させてください。")
-                input("  (Enter で継続, Ctrl+C で中断): ")
-                for event in app.stream(None, config, stream_mode="values"):
-                    current_state = event
-                    status = event.get("status")
-                    if status:
-                        print(f"  [進捗]: {status}")
-    except ValueError as e:
-        # "No checkpointer set" の場合は、中断なしで完了したとみなす
-        if "No checkpointer set" not in str(e):
-            raise e
+    # チェックポイントを確認し、中断されている場合は継続（auto_approve時）
+    snapshot = app.get_state(config)
+    if snapshot.next and "review" in snapshot.next:
+        if auto_approve:
+            print("  [承認]: 自動承認されたため、書き込みを実行します。")
+            for event in app.stream(None, config, stream_mode="values"):
+                current_state = event
+        else:
+            print(f"\n[待機]: レビュー待ちです。[[{current_state.get('target_page')}]] の内容を確認し、承認してください。")
+            print("(--yes オプションで自動承認可能です)")
 
     print("Done: Workflow finished.")
     if current_state and "target_page" in current_state:

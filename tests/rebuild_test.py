@@ -9,7 +9,7 @@ import os
 import shutil
 import time
 import subprocess
-import pytest
+import re
 from pathlib import Path
 from core.utils import parse_frontmatter
 
@@ -31,12 +31,17 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 
+os.environ["QDRANT_MODE"] = "memory"
+
 def run_cmd(cmd_list, timeout=120):
     """コマンドを実行し、完了を待つ。"""
     print(f"  Running: {' '.join(cmd_list)}")
+    env = os.environ.copy()
+    env["QDRANT_MODE"] = "memory"
     result = subprocess.run(
         cmd_list, capture_output=True, text=True,
-        encoding="utf-8", errors='replace', timeout=timeout
+        encoding="utf-8", errors='replace', timeout=timeout,
+        env=env
     )
     if result.stdout:
         for line in result.stdout.strip().split('\n'):
@@ -86,7 +91,10 @@ def test_full_rebuild():
     
     # Qdrant もリセット
     if qdrant_dir.exists():
-        shutil.rmtree(qdrant_dir)
+        try:
+            shutil.rmtree(qdrant_dir)
+        except Exception as e:
+            print(f"  ⚠ Warning: Could not reset qdrant_data: {e}")
     
     # ── 2. データ投入 ──
     print("[2/5] Ingesting test document 1...")

@@ -3,7 +3,9 @@ from unittest.mock import patch, MagicMock
 from pathlib import Path
 import pytest
 from agent.graph import app
+from agent.state import AgentState
 from core.schemas import WikiMetadataSchema
+from langchain_core.messages import AIMessage
 
 @pytest.mark.ollama
 class TestRedlinkResolution(unittest.TestCase):
@@ -24,10 +26,11 @@ class TestRedlinkResolution(unittest.TestCase):
         """
         赤リンク（MissingPage）を検知し、Qdrantから証拠が見つかった場合にスタブを作成するか。
         """
-        # 1. モックの設定
-        mock_store = mock_get_store.return_value
-        mock_writer = mock_get_writer.return_value
-        mock_writer.wiki_dir = self.wiki_dir
+        # 1. Wikiフォルダの状況：PageAがあるが、中身に [[UnknownTerm]] へのリンク
+        # (モックではなく物理的な小規模チェックを行う準備)
+        wiki_dir = Path("wiki")
+        wiki_dir.mkdir(exist_ok=True)
+        (wiki_dir / "PageA.md").write_text("Concepts like [[UnknownTerm]] are vital.", encoding="utf-8")
         
         # 検索結果（証拠）を返すように設定
         from langchain_core.documents import Document
@@ -35,29 +38,48 @@ class TestRedlinkResolution(unittest.TestCase):
             Document(page_content="MissingPage is a known technique.", metadata={"source": "Doc.pdf", "type": "raw_source"})
         ]
         
-        # LLMのモック
+        # 3. LLMのモック
         mock_model = MagicMock()
-        # 翻訳用、本文生成用、メタデータ抽出用の3回呼ばれる想定
-        mock_model.invoke.side_effect = [
-            MagicMock(content="MissingPage"), # 翻訳
-            MagicMock(content="Generated Body"), # 本文
-            MagicMock(content="Generated Fallback Concepts") # フォールバック概念
-        ]
-        # 構造化出力
-        mock_metadata = WikiMetadataSchema(
-            title="MissingPage", abstract="Summary", concepts=["Concept"], body="Body", tags=["test"], aliases=[]
+        
+        # body生成用
+        mock_model.invoke.return_value = AIMessage(content="AI generated content about UnknownTerm based on primary source.")
+        
+        # metadata抽出用
+        mock_structured = MagicMock()
+        mock_structured.invoke.return_value = WikiMetadataSchema(
+            title="UnknownTerm",
+            abstract="AI generated content about UnknownTerm",
+            concepts=["UnknownTerm"],
+            tags=["auto-draft"],
+            aliases=[]
         )
-        mock_model.with_structured_output.return_value.invoke.return_value = mock_metadata
+        mock_model.with_structured_output.return_value = mock_structured
+        
         mock_get_model.return_value = mock_model
         
-        # 2. 実行
-        from agent.graph import lint_node
-        result = lint_node({"status": "starting_lint"})
+        # 4. Lintノードを実行
+        config = {"configurable": {"thread_id": "redlink_test"}}
+        # 直接 lint ノードの挙動を模した実行、またはグラフ全体でlint開始
+        for event in app.stream({"status": "starting_lint"}, config, stream_mode="values"):
+            pass
+
+        # 5. 検証：wiki/concepts/ に UnknownTerm.md が生成されていること
+        # agent/graph.py では obsidian_writer.create_draft_from_schema(data, sub_dir="concepts") を呼んでいる
+        staged_file = Path("wiki/concepts/UnknownTerm.md")
+        self.assertTrue(staged_file.exists(), f"Draft file for Red-link should be created at {staged_file}")
         
-        # 3. 検証
-        self.assertEqual(result["status"], "linted")
-        # writer.create_draft_from_schema が呼ばれたか
-        mock_writer.create_draft_from_schema.assert_called()
+        # 6. 中身のエビデンス確認
+        content = staged_file.read_text(encoding="utf-8")
+        # LLMが正しく一次情報を引用している（はず）の確認
+        self.assertIn("UnknownTerm", content)
+        
+        # クリーンアップ
+        staged_file.unlink()
+        (wiki_dir / "PageA.md").unlink()
+        if (wiki_dir / "concepts").exists():
+            for f in (wiki_dir / "concepts").iterdir(): f.unlink()
+            (wiki_dir / "concepts").rmdir()
+        print("\n✅ Red-link auto-resolution (TDD) initial test verified logic path.")
 
 if __name__ == '__main__':
     unittest.main()

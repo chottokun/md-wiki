@@ -5,26 +5,18 @@ from retrieval.qdrant_store import QdrantHybridStore
 from pathlib import Path
 import git
 
-def test_extract_unstaged_diff(tmp_path):
-    """unstagedな変更をgit diffで正しく抽出できるか。"""
-    # 1. テスト用リポジトリの初期化
-    repo_dir = tmp_path / "wiki"
-    repo_dir.mkdir()
-    repo = git.Repo.init(repo_dir)
-    
-    # ダミーファイルの作成とコミット
-    test_file = repo_dir / "Page.md"
-    test_file.write_text("Old info", encoding="utf-8")
-    repo.index.add(["Page.md"])
-    repo.index.commit("Initial")
-    
-    # ファイルの変更（unstaged）
-    test_file.write_text("New factual info", encoding="utf-8")
-    
-    # 2. SyncManagerの初期化
-    mock_store = MagicMock(spec=QdrantHybridStore)
-    with patch("core.config.Config.WIKI_DIR", repo_dir):
-        mgr = GitSyncManager(store=mock_store)
+class TestRefineLogic(unittest.TestCase):
+    """
+    手動編集(git diff)をきっかけとしたAIによる自動改善提案フローの検証。
+    """
+
+    @patch('git.Repo')
+    def test_extract_unstaged_diff(self, mock_repo):
+        """unstagedな変更をgit diffで正しく抽出できるか。"""
+        # Repo().git.diff('HEAD', 'Page.md') の戻り値を設定
+        mock_repo.return_value.git.diff.return_value = "--- a/wiki/Page.md\n+++ b/wiki/Page.md\n@@ -1,2 +1,2 @@\n-Old info\n+New factual info"
+        
+        mgr = GitSyncManager(store=MagicMock())
         diff = mgr.get_unstaged_diff("Page.md")
         
         # 3. 検証

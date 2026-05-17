@@ -54,8 +54,12 @@ def test_prompts_generation():
     assert "raw markdown" in draft_prompt[1][1]
     assert context in draft_prompt[1][1]
 
-def test_sync_manager_init(tmp_path):
-    # Test if GitSyncManager initializes correctly with a mock store
+@patch("retrieval.sync_manager.git.Repo")
+def test_sync_manager_init(mock_repo_class):
+    # Test if GitSyncManager initializes with Config.WIKI_DIR
+    mock_repo = MagicMock()
+    mock_repo_class.return_value = mock_repo
+    
     mock_store = MagicMock(spec=QdrantHybridStore)
     repo_dir = tmp_path / "wiki"
     repo_dir.mkdir()
@@ -67,7 +71,12 @@ def test_sync_manager_init(tmp_path):
         assert sync_manager.wiki_dir == repo_dir.absolute()
         assert sync_manager.repo is not None
 
-def test_sync_manager_get_current_head(tmp_path):
+@patch("retrieval.sync_manager.git.Repo")
+def test_sync_manager_get_current_head(mock_repo_class):
+    mock_repo = MagicMock()
+    mock_repo.head.commit.hexsha = "a" * 40
+    mock_repo_class.return_value = mock_repo
+    
     mock_store = MagicMock(spec=QdrantHybridStore)
     repo_dir = tmp_path / "wiki"
     repo_dir.mkdir()
@@ -78,11 +87,8 @@ def test_sync_manager_get_current_head(tmp_path):
     repo.git.add(all=True)
     repo.index.commit("initial commit")
     
-    with patch("core.config.Config.WIKI_DIR", repo_dir):
-        sync_manager = GitSyncManager(store=mock_store)
-        head = sync_manager._get_current_head()
-        assert head != "unknown"
-        assert len(head) == 40 # SHA-1 hash length
+    head = sync_manager._get_current_head()
+    assert head == "a" * 40
 
 def test_git_commit_logic_with_temp_repo(tmp_path):
     # Test the logic used in main.py for git commit with a real temp repo

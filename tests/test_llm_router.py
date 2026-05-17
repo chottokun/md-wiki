@@ -8,11 +8,15 @@ from langchain_openai import ChatOpenAI
 
 class TestLLMRouter(unittest.TestCase):
     def test_ollama_instance(self):
-        # LLM_PROVIDER=ollama を確実に適用した状態でインスタンス化
-        with patch.dict(os.environ, {"LLM_PROVIDER": "ollama", "LOCALLLM_BASE_URL": "http://localhost:11434"}):
-            router = LLMRouter()
-            model = router.get_model(LLMLayer.L1)
-            self.assertIsInstance(model, ChatOllama)
+        # LLM_PROVIDER=ollama (default in .env)
+        os.environ["LLM_PROVIDER"] = "ollama"
+        from core.llm_router import LLMRouter
+        test_router = LLMRouter()
+        model = test_router.get_model(LLMLayer.L1)
+        self.assertIsInstance(model, ChatOllama)
+        self.assertEqual(model.model, os.getenv("LOCALLLM_MODEL"))
+        # keep_alive: 0 が設定されているか確認
+        self.assertEqual(model.num_ctx, None) # 他のパラメータも確認可能
 
     def test_openai_compatible_l3(self):
         # L3はプロバイダーによらず、現状は OpenAI 互換 (sakura-v1) と想定（Routerの実装に依存）

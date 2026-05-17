@@ -34,6 +34,9 @@ def normalize_term(term: str) -> str:
     # 全角括弧→半角
     t = t.replace('（', '(').replace('）', ')')
     
+    # スラッシュやバックスラッシュをアンダースコアに置換（パス構成を回避）
+    t = t.replace('/', '_').replace('\\', '_')
+
     # コロン（MediaWiki名前空間記法）を除去
     t = t.replace(':', '')
     
@@ -78,8 +81,8 @@ def dump_frontmatter(data: Dict[str, Any]) -> str:
     return f"---\n{stream.getvalue().strip()}\n---\n"
 
 @lru_cache(maxsize=1)
-def get_all_concepts(wiki_dir: str = "wiki") -> List[str]:
-    """wiki/concepts ディレクトリ内のファイル名から既存の概念リストを取得する。"""
+def _get_all_concepts_internal(wiki_dir: str) -> List[str]:
+    """内部用キャッシュ関数"""
     concept_dir = Path(wiki_dir) / "concepts"
     if not concept_dir.exists():
         return []
@@ -92,8 +95,14 @@ def get_all_concepts(wiki_dir: str = "wiki") -> List[str]:
             concepts.append(name)
     return list(set(concepts))
 
-# Wikiリンクの正規表現 (エイリアス [[ページ名|表示名]] や アンカー [[ページ名#セクション]] に対応)
-WIKI_LINK_RE = re.compile(r"\[\[([^|#\]]+)(?:[|#][^\]]+)?\]\]")
+def get_all_concepts(wiki_dir: str = "wiki") -> List[str]:
+    """wiki/concepts ディレクトリ内のファイル名から既存の概念リストを取得する。
+    
+    呼び出し側での変更がキャッシュに影響しないよう、常にコピーを返す。
+    """
+    return list(_get_all_concepts_internal(str(wiki_dir)))
+
+WIKI_LINK_RE = re.compile(r"\[\[(.*?)\]\]")
 
 def auto_link_concepts(body: str, concepts: List[str]) -> str:
     """本文中の用語を自動でリンク化する。
@@ -201,26 +210,36 @@ def extract_json_from_text(text: str) -> Optional[str]:
     """
     MarkdownなどのテキストからJSONブロックを抽出する。
     1. ```json ... ``` ブロックを優先。
-    2. 見つからない場合は、最も外側の { ... } を抽出。
-    3. LLMが不純物を混ぜた場合（例: **Metadata** { ... }）にも対応。
+    2. 見つからない場合は、最初のバランスした { ... } を抽出。
     """
     if not text:
         return None
         
     # 1. ```json ... ``` の抽出
-    json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
-    if json_match:
-        return json_match.group(1)
+    # ブロックを見つけてから、その中をバランスチェックする
+    json_block_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+    if json_block_match:
+        inner = json_block_match.group(1)
+        result = _extract_balanced_json(inner)
+        if result:
+            return result
         
-    # 2. 最初と最後のブラケットを探す
+    # 2. 直接バランスしたブラケットを探す
+    return _extract_balanced_json(text)
+
+def _extract_balanced_json(text: str) -> Optional[str]:
+    """最初に見つかった { から、対応する } までの範囲を抽出する。"""
     start = text.find("{")
-    end = text.rfind("}")
-    
-    if start != -1 and end != -1 and end > start:
-        # ブラケットの内側を抽出
-        candidate = text[start:end+1]
-        # 最小限の検証: ブラケットが閉じているか
-        if candidate.count("{") == candidate.count("}"):
-            return candidate
-            
+    if start == -1:
+        return None
+        
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start:i+1]
+                
     return None

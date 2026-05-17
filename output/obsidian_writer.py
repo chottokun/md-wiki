@@ -1,23 +1,67 @@
+import logging
 import os
 import re
 import shutil
-import logging
-from typing import Dict, Any, Optional, List
-from pathlib import Path
 from datetime import datetime
-from core.utils import normalize_term, parse_frontmatter, dump_frontmatter
+from pathlib import Path
+from typing import Dict, Any, Optional
 
 from core.config import Config
 from core.schemas import WikiFrontmatterSchema
+from core.utils import normalize_term, parse_frontmatter, dump_frontmatter
 
 logger = logging.getLogger(__name__)
+
+# タグ抽出用の正規表現 (Obsidianの仕様に準拠)
+# 前に空白または行頭があり、#の後に1文字以上の英数字・スラッシュ・ハイフンが続くもの
+TAG_PATTERN = re.compile(r'(?<!\S)#([\w/-]+)')
 
 class ObsidianWriter:
     def __init__(self, wiki_dir: Optional[str] = None, staged_dir: Optional[str] = None):
         self.wiki_dir = Path(wiki_dir).resolve() if wiki_dir else Config.WIKI_DIR.resolve()
         self.wiki_dir.mkdir(parents=True, exist_ok=True)
-        self.staged_dir = Path(staged_dir) if staged_dir else Path("_staged")
+        # Staged dir defaults to _staged relative to the workspace root if not provided
+        self.staged_dir = Path(staged_dir).resolve() if staged_dir else Path("_staged").resolve()
         self.staged_dir.mkdir(parents=True, exist_ok=True)
+
+    def approve_update(self, page_name: str) -> bool:
+        """
+        承認されたドラフトを本番のWikiディレクトリに反映し、レビューファイルを削除する。
+        """
+        try:
+            safe_page_name = normalize_term(page_name)
+            staged_path = self.staged_dir / f"{safe_page_name}_review.md"
+            wiki_path = self.wiki_dir / f"{safe_page_name}.md"
+
+            if not staged_path.exists():
+                logger.error(f"承認対象のファイルが見つかりません: {staged_path}")
+                return False
+
+            content = staged_path.read_text(encoding="utf-8")
+
+            # Robust content extraction:
+            # 1. Try to find content between '## Proposed Full Content' and a boundary (--- or ## Agent Metadata)
+            match = re.search(r"## Proposed Full Content\n+(.*?)(?=\n---|\n## Agent Metadata|$)", content, re.DOTALL)
+            if match:
+                final_content = match.group(1).strip()
+            else:
+                # 2. If not found, take everything before the first boundary
+                match = re.search(r"(.*?)(?=\n---|\n## Agent Metadata|$)", content, re.DOTALL)
+                if match:
+                    final_content = match.group(1).strip()
+                else:
+                    final_content = content.strip()
+
+            # Wikiファイルを更新
+            wiki_path.write_text(final_content, encoding="utf-8")
+
+            # レビュー用一時ファイルを削除（クリーンアップ）
+            staged_path.unlink()
+            logger.info(f"Wikiを更新しました: {wiki_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Wikiの更新反映中にエラーが発生しました: {str(e)}")
+            return False
 
     def _get_safe_path(self, base_dir: Path, *path_parts: str) -> Path:
         """ベースディレクトリ配下の安全なパスを生成し、ディレクトリトラバーサルを防止する。"""
@@ -188,19 +232,23 @@ class ObsidianWriter:
             "abstract": data.get("abstract", "")
         }
         
+        # LLMが誤って生成した # タイトル や > [!abstract] コールアウトを本文から削除
+        clean_body = re.sub(r'^#\s+.*?\n+', '', clean_body, count=1).strip()
+        clean_body = re.sub(r'^>\s*\[!abstract\].*?(?:\n>.*)*\n+', '', clean_body, flags=re.MULTILINE | re.IGNORECASE).strip()
+        
         concepts_str = "\n".join([f"- {c}" for c in data.get("concepts", [])])
+        
         final_body = f"""# {page_name}
 
 > [!abstract] 要約
 > {data.get('abstract', '')}
 
-## 詳細解説
 {clean_body}
 
 ## 💡 主要な概念
 {concepts_str}
 """
-        full_content = f"{dump_frontmatter(metadata)}\n\n{final_body}"
+        full_content = f"{dump_frontmatter(metadata)}\n\n{final_body.strip()}"
         return self.create_draft_file(
             page_name, 
             full_content, 
@@ -241,7 +289,7 @@ class ObsidianWriter:
         else:
             logger.warning(f"  [File] Source file not found: {src}")
 
-        rel_path = target_path.relative_to(self.wiki_dir)
+        rel_path = target_path.relative_to(self.wiki_dir).as_posix()
         return f"[[{rel_path}]]"
 
     def _handle_raw_markdown(self, name: str, content: Optional[str]) -> Optional[str]:
@@ -252,14 +300,8 @@ class ObsidianWriter:
         filename = f"{name}.md" if not name.endswith(".md") else name
         raw_path = self._get_safe_path(raw_dir, filename)
 
-        logger.info(f"  [File] Writing raw markdown: {raw_path} (length: {len(content)})")
-        try:
-            raw_path.write_text(content, encoding="utf-8")
-            logger.info(f"  [File] Successfully wrote raw markdown.")
-        except Exception as e:
-            logger.error(f"  [File] Failed to write raw markdown: {e}")
-
-        rel_path = raw_path.relative_to(self.wiki_dir)
+        raw_path.write_text(content, encoding="utf-8")
+        rel_path = raw_path.relative_to(self.wiki_dir).as_posix()
         return f"[[{rel_path}]]"
 
     def _generate_footer(self, source_link: Optional[str], raw_link: Optional[str]) -> str:
@@ -334,22 +376,48 @@ class ObsidianWriter:
             f.write(entry)
 
     def update_index(self):
-        pages = [p for p in self.wiki_dir.rglob("*.md") 
-                 if p.name not in ["Home.md", "log.md"] and "raw_markdown" not in str(p) and "sources" not in str(p)]
+        pages = sorted([p for p in self.wiki_dir.rglob("*.md") 
+                 if p.name not in ["Home.md", "log.md"] and "raw_markdown" not in str(p) and "sources" not in str(p)])
                  
         page_list = []
         tag_map = {}
 
-        for p in sorted(pages):
+        for p in pages:
             try:
                 content = p.read_text(encoding="utf-8")
-                data, _ = parse_frontmatter(content)
-                tags = data.get("tags", []) if data else []
-                if isinstance(tags, str): tags = [tags]
-
-                page_list.append(f"- [[{p.stem}]]")
-                for tag in tags:
+                data, body = parse_frontmatter(content)
+                
+                # タグの抽出 (フロントマター + 本文)
+                tags = set()
+                
+                # 1. フロントマターから抽出
+                if data and "tags" in data:
+                    fm_tags = data["tags"]
+                    if isinstance(fm_tags, str):
+                        tags.add(fm_tags)
+                    elif isinstance(fm_tags, (list, set)):
+                        for t in fm_tags:
+                            if t: tags.add(str(t))
+                
+                # 2. 本文から抽出 (ヘッダーを除外しながら)
+                for line in body.splitlines():
+                    if re.match(r'^\s*#+\s+', line): # Markdownの見出し (# Header) を除外
+                        continue
+                    # TAG_PATTERN を使用してタグを抽出
+                    found = TAG_PATTERN.findall(line)
+                    for t in found:
+                        if t: tags.add(t)
+                
+                sorted_tags = sorted(list(tags))
+                
+                # ページリスト用 (タグを付与、重複排除済み)
+                tag_str = f" {' '.join(['#' + t for t in sorted_tags])}" if sorted_tags else ""
+                page_list.append(f"- [[{p.stem}]]{tag_str}")
+                
+                # タグ別マップ用 (タグインデックス生成用)
+                for tag in sorted_tags:
                     tag_map.setdefault(tag, []).append(f"[[{p.stem}]]")
+                    
             except Exception as e:
                 logger.error(f"Error indexing page {p}: {e}")
                 continue
@@ -364,7 +432,7 @@ class ObsidianWriter:
 
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
 
-        # コンテンツの結合
+        # コンテンツの結合 (最新の日本語表現を維持)
         sections = [
             "# 🏠 RAG-Wiki Home",
             "## 📚 全ページ",
