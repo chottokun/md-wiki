@@ -4,6 +4,7 @@ Wiki再構築テスト。
 
 注意: このテストは実際のLLMを呼び出す統合テストです。
 """
+import pytest
 import sys
 import os
 import shutil

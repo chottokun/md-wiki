@@ -55,7 +55,7 @@ def test_prompts_generation():
     assert context in draft_prompt[1][1]
 
 @patch("retrieval.sync_manager.git.Repo")
-def test_sync_manager_init(mock_repo_class):
+def test_sync_manager_init(mock_repo_class, tmp_path):
     # Test if GitSyncManager initializes with Config.WIKI_DIR
     mock_repo = MagicMock()
     mock_repo_class.return_value = mock_repo
@@ -72,7 +72,7 @@ def test_sync_manager_init(mock_repo_class):
         assert sync_manager.repo is not None
 
 @patch("retrieval.sync_manager.git.Repo")
-def test_sync_manager_get_current_head(mock_repo_class):
+def test_sync_manager_get_current_head(mock_repo_class, tmp_path):
     mock_repo = MagicMock()
     mock_repo.head.commit.hexsha = "a" * 40
     mock_repo_class.return_value = mock_repo
@@ -87,6 +87,7 @@ def test_sync_manager_get_current_head(mock_repo_class):
     repo.git.add(all=True)
     repo.index.commit("initial commit")
     
+    sync_manager = GitSyncManager(store=mock_store)
     head = sync_manager._get_current_head()
     assert head == "a" * 40
 

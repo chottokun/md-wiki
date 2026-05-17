@@ -1,4 +1,5 @@
 import pytest
+import unittest
 from unittest.mock import patch, MagicMock
 from retrieval.sync_manager import GitSyncManager
 from retrieval.qdrant_store import QdrantHybridStore

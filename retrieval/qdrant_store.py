@@ -68,6 +68,11 @@ class QdrantHybridStore:
 
         self._ensure_collection()
 
+        if os.getenv("SKIP_SPARSE_EMBEDDINGS") == "true":
+            retrieval_mode = RetrievalMode.DENSE
+        else:
+            retrieval_mode = RetrievalMode.HYBRID
+
         self.vector_store = QdrantVectorStore(
             client=self.client,
             collection_name=self.collection_name,
