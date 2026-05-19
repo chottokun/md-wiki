@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from core.utils import normalize_term, parse_frontmatter, dump_frontmatter
+from core.utils import normalize_term, parse_frontmatter, dump_frontmatter, extract_json_from_text
 from output.obsidian_writer import ObsidianWriter
 
 @pytest.fixture
@@ -98,3 +98,44 @@ def test_update_preserves_sources(temp_wiki):
     # 両方のソースが残っていること
     assert "source_a" in data["sources"]
     assert "source_b" in data["sources"]
+
+def test_extract_json_none_and_empty():
+    """Verify that None or empty strings return None."""
+    assert extract_json_from_text(None) is None
+    assert extract_json_from_text("") is None
+
+def test_extract_json_no_braces():
+    """Verify that text without braces returns None."""
+    assert extract_json_from_text("plain text") is None
+    assert extract_json_from_text("JSON is missing here") is None
+
+def test_extract_json_single_brace():
+    """Verify that single braces return None."""
+    assert extract_json_from_text("{") is None
+    assert extract_json_from_text("}") is None
+    assert extract_json_from_text("text with { but no end") is None
+    assert extract_json_from_text("text with } but no start") is None
+
+def test_extract_json_reversed_braces():
+    """Verify that braces in reversed order return None."""
+    assert extract_json_from_text("}{") is None
+    assert extract_json_from_text("Closing } then opening {") is None
+
+def test_extract_json_unbalanced_braces():
+    """Verify that unbalanced braces return None."""
+    assert extract_json_from_text("{{}") is None
+    assert extract_json_from_text("{}}") is None
+    assert extract_json_from_text("{\"a\": 1") is None
+    assert extract_json_from_text("{\"a\": 1}}") is None
+
+def test_extract_json_empty_braces():
+    """Verify that empty braces are correctly extracted."""
+    assert extract_json_from_text("{}") == "{}"
+    assert extract_json_from_text("Result: {}") == "{}"
+
+def test_extract_json_valid_but_malformed_json():
+    """
+    Verify that the function only checks for brace matching, not JSON validity.
+    (This is the responsibility of the caller or a dedicated JSON parser)
+    """
+    assert extract_json_from_text("{\"a\": }") == "{\"a\": }"
