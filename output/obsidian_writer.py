@@ -1,14 +1,15 @@
+import difflib
+import logging
 import os
 import re
 import shutil
-import logging
-from typing import Dict, Any, Optional, List
-from pathlib import Path
 from datetime import datetime
-from core.utils import normalize_term, parse_frontmatter, dump_frontmatter
+from pathlib import Path
+from typing import Any, Dict, Optional
 
 from core.config import Config
 from core.schemas import WikiFrontmatterSchema
+from core.utils import dump_frontmatter, normalize_term, parse_frontmatter
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,6 @@ class ObsidianWriter:
 
     def generate_diff(self, old_text: str, new_text: str) -> str:
         """単純な行ベースの差分を生成（difflibを使用）"""
-        import difflib
         old_lines = old_text.splitlines()
         new_lines = new_text.splitlines()
         diff = difflib.unified_diff(old_lines, new_lines, lineterm="")
