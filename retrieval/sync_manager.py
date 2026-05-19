@@ -1,8 +1,5 @@
 import logging
-import os
-import re
 from pathlib import Path
-from typing import List, Tuple, Set, Optional
 import git
 from retrieval.qdrant_store import QdrantHybridStore
 from core.config import Config
@@ -36,7 +33,7 @@ class GitSyncManager:
     def _save_sync_state(self, commit_hash: str):
         self.state_file.write_text(commit_hash, encoding="utf-8")
 
-    def get_changed_files(self) -> Set[Path]:
+    def get_changed_files(self) -> set[Path]:
         """
         未コミットの変更、新規ファイル、および前回同期以降の変更ファイルを取得する。
         """
@@ -78,7 +75,7 @@ class GitSyncManager:
         
         return changed_files
 
-    def perform_incremental_sync(self, include_unreviewed: Optional[bool] = None):
+    def perform_incremental_sync(self, include_unreviewed: bool | None = None):
         """
         差分同期を実行し、変更のあったファイルのみQdrantを更新する。
         include_unreviewed=False の場合、未審査タグがあるファイルはスキップする。
