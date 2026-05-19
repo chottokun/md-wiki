@@ -1,5 +1,4 @@
 import shutil
-import os
 from pathlib import Path
 
 def reset_env():
