@@ -2,12 +2,14 @@ import os
 import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
+from concurrent.futures import ThreadPoolExecutor
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_qdrant import QdrantVectorStore, RetrievalMode, FastEmbedSparse
 from langchain_ollama import OllamaEmbeddings
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest_models
+from core.config import Config
 
 # ロギング設定
 logger = logging.getLogger(__name__)
@@ -116,25 +118,36 @@ class QdrantHybridStore:
         # テスト等でディレクトリを明示的に指定された場合に対応
         w_dir = Path(wiki_dir) if wiki_dir else self.wiki_dir
         
-        all_documents = []
         wiki_files = list(w_dir.glob("**/*.md"))
-        for file_path in wiki_files:
+
+        def process_file(file_path: Path) -> List[Document]:
             if any(x in file_path.name for x in [".md-wiki-sync-state", "Home.md", "log.md"]):
-                continue
+                return []
             
-            content = file_path.read_text(encoding="utf-8")
+            try:
+                content = file_path.read_text(encoding="utf-8")
+            except Exception as e:
+                logger.error(f"Error reading file {file_path}: {e}")
+                return []
+
             if not include_unreviewed:
                 if "未審査" in content or "#未審査" in content:
-                    continue
+                    return []
                 
             source_name = file_path.stem
             is_raw = "raw_markdown" in str(file_path)
             
             if is_raw:
                 pdf_name = source_name.replace("_raw", "") + ".pdf"
-                all_documents.extend(self.get_chunks(content, {"source": pdf_name, "type": "raw_source"}))
+                return self.get_chunks(content, {"source": pdf_name, "type": "raw_source"})
             else:
-                all_documents.extend(self.get_chunks(content, {"source": source_name, "type": "wiki_page"}))
+                return self.get_chunks(content, {"source": source_name, "type": "wiki_page"})
+
+        all_documents = []
+        with ThreadPoolExecutor() as executor:
+            results = executor.map(process_file, wiki_files)
+            for doc_list in results:
+                all_documents.extend(doc_list)
         
         if all_documents:
             self.add_documents(all_documents)
