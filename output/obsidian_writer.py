@@ -2,7 +2,7 @@ import os
 import re
 import shutil
 import logging
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional
 from pathlib import Path
 from datetime import datetime
 from core.utils import normalize_term, parse_frontmatter, dump_frontmatter
@@ -235,7 +235,7 @@ class ObsidianWriter:
         if src.exists() and src.is_file():
             try:
                 shutil.copy2(src, target_path)
-                logger.info(f"  [File] Successfully copied source file.")
+                logger.info("  [File] Successfully copied source file.")
             except Exception as e:
                 logger.error(f"  [File] Failed to copy source file: {e}")
         else:
@@ -255,7 +255,7 @@ class ObsidianWriter:
         logger.info(f"  [File] Writing raw markdown: {raw_path} (length: {len(content)})")
         try:
             raw_path.write_text(content, encoding="utf-8")
-            logger.info(f"  [File] Successfully wrote raw markdown.")
+            logger.info("  [File] Successfully wrote raw markdown.")
         except Exception as e:
             logger.error(f"  [File] Failed to write raw markdown: {e}")
 
