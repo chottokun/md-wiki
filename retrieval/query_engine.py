@@ -1,7 +1,7 @@
+from __future__ import annotations
 import re
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Optional
 from langchain_core.documents import Document
 from core.llm_router import LLMLayer
 from core.config import Config
@@ -16,7 +16,7 @@ class WikiQueryEngine:
     LLMに回答を生成させるエンジン。
     """
 
-    def __init__(self, qdrant_store, router, wiki_dir: Optional[Path] = None):
+    def __init__(self, qdrant_store, router, wiki_dir: Path | None = None):
         """
         Args:
             qdrant_store: QdrantHybridStore のインスタンス
@@ -69,7 +69,7 @@ class WikiQueryEngine:
         
         return response.content
 
-    def _find_link_path(self, link: str) -> Optional[Path]:
+    def _find_link_path(self, link: str) -> Path | None:
         """
         指定されたリンク名に対応するMarkdownファイルをWikiディレクトリ内で検索する。
         サブディレクトリも再帰的に探索する。
@@ -89,7 +89,7 @@ class WikiQueryEngine:
             
         return None
 
-    def _build_context_string(self, docs: List[Document]) -> str:
+    def _build_context_string(self, docs: list[Document]) -> str:
         context_parts = []
         for d in docs:
             dtype = d.metadata.get("type", "unknown")
