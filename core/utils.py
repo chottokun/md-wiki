@@ -12,6 +12,7 @@ yaml = YAML()
 yaml.preserve_quotes = True
 yaml.indent(mapping=2, sequence=4, offset=2)
 
+@lru_cache(maxsize=2048)
 def normalize_term(term: str) -> str:
     """
     Wiki全体で共通の用語正規化ロジック。
@@ -186,6 +187,7 @@ TECHNICAL_STOPWORDS = {
     "human", "people", "user", "study", "research", "paper", "article"
 }
 
+@lru_cache(maxsize=2048)
 def is_technical_term(term: str) -> bool:
     """用語が技術的・専門的であるか判定する（簡易フィルタ）。"""
     if not term: return False

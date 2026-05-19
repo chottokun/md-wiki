@@ -87,29 +87,58 @@ def ingest_node(state: AgentState) -> Dict[str, Any]:
         "status": "ingested"
     }
 
+import concurrent.futures
+
+def _process_page_for_red_links(p: Path, existing_normalized_names: Set[str]) -> Set[str]:
+    """1つのファイルから赤リンクを抽出する内部関数。"""
+    red_links = set()
+    try:
+        content = p.read_text(encoding="utf-8")
+        # WIKI_LINK_RE: r"\[\[([^|#\]]+)(?:[|#][^\]]+)?\]\]"
+        # すでにリンクターゲット（エイリアス・アンカー以前）をキャプチャしている
+        links = WIKI_LINK_RE.findall(content)
+        for term in links:
+            term = term.strip().strip("[]")
+
+            # フォルダパス、空文字、Home、画像ファイルなどはスキップ
+            if not term or "/" in term or "\\" in term or term == "Home": continue
+            if term.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg', '.gif')): continue
+            if ":" in term: continue
+
+            norm_term = normalize_term(term)
+            if not is_technical_term(term) or not is_technical_term(norm_term): continue
+            if norm_term not in existing_normalized_names:
+                red_links.add(term)
+    except Exception as e:
+        logger.error(f"Error reading {p}: {e}")
+    return red_links
+
 def _find_red_links(wiki_dir: Path) -> Set[str]:
-    pages = list(wiki_dir.rglob("*.md"))
+    # raw_markdown や sources フォルダを除外した状態でリストアップ
+    all_pages = list(wiki_dir.rglob("*.md"))
+    pages = [p for p in all_pages if "raw_markdown" not in p.parts and "sources" not in p.parts]
+
     existing_normalized_names = {normalize_term(p.stem) for p in pages}
     red_links = set()
-    for p in pages:
-        if "raw_markdown" in str(p) or "sources" in str(p): continue
-        try:
-            content = p.read_text(encoding="utf-8")
-            links = re.findall(r"\[\[(.*?)\]\]", content)
-            for link in links:
-                # エイリアスやアンカーを分離
-                term = link.split("|")[0].split("#")[0].strip().strip("[]")
-                # フォルダパス、空文字、Home、画像ファイルなどはスキップ
-                if not term or "/" in term or "\\" in term or term == "Home": continue
-                if term.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg', '.gif')): continue
-                if ":" in term: continue
-                
-                norm_term = normalize_term(term)
-                if not is_technical_term(term) or not is_technical_term(norm_term): continue
-                if norm_term not in existing_normalized_names:
-                    red_links.add(term)
-        except Exception as e:
-            logger.error(f"Error reading {p}: {e}")
+
+    # スレッドプールを使用して並列にファイル読み込みとパースを実行
+    # I/Oバウンドな処理のため、並列化による高速化が期待できる
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        # 大量のファイルがある場合のオーバーヘッドを抑えるため、チャンク分けして実行
+        chunk_size = 100
+        futures = []
+        for i in range(0, len(pages), chunk_size):
+            chunk = pages[i:i + chunk_size]
+            def process_chunk(chunk_pages):
+                local_set = set()
+                for page in chunk_pages:
+                    local_set.update(_process_page_for_red_links(page, existing_normalized_names))
+                return local_set
+            futures.append(executor.submit(process_chunk, chunk))
+
+        for future in concurrent.futures.as_completed(futures):
+            red_links.update(future.result())
+
     return red_links
 
 def _fetch_context(term: str, llm) -> tuple[str, list, list]:
