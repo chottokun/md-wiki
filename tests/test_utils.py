@@ -52,6 +52,13 @@ Body text here."""
     assert data["aliases"] == ["AI", "Bot"]
     assert body == "# Main Content\nBody text here."
 
+def test_parse_frontmatter_invalid_yaml():
+    """不正なYAMLが含まれる場合に(None, content)が返ることを確認する"""
+    invalid_content = "---\n[invalid yaml\n---\nBody content"
+    data, body = parse_frontmatter(invalid_content)
+    assert data is None
+    assert body == invalid_content
+
 def test_yaml_frontmatter_dump():
     data = {
         "tags": ["alpha", "beta"],
