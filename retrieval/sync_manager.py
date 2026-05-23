@@ -1,6 +1,5 @@
 import logging
 import os
-import re
 from pathlib import Path
 from typing import List, Tuple, Set, Optional
 import git
