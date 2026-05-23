@@ -71,3 +71,12 @@ class WikiFrontmatterSchema(BaseModel):
 
     class Config:
         extra = "allow" # 予期せぬフィールドも一旦保持する（破壊防止）
+
+class DraftConfig(BaseModel):
+    """create_draft_file 用の設定オブジェクト。"""
+    page_name: str
+    proposed_content: str
+    source_filename: Optional[str] = None
+    source_path: Optional[str] = None
+    raw_markdown: Optional[str] = None
+    sub_dir: Optional[str] = None
