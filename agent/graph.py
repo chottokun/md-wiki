@@ -28,7 +28,6 @@ from core.prompts import (
     get_metadata_prompt,
     get_fallback_prompt,
     get_translation_prompt,
-    get_judgment_prompt,
     get_refine_prompt,
     get_draft_body_prompt
 )
