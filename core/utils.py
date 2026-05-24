@@ -12,6 +12,11 @@ yaml = YAML()
 yaml.preserve_quotes = True
 yaml.indent(mapping=2, sequence=4, offset=2)
 
+# 各種ハイフン・ダッシュ類を標準ハイフンに統一するための変換テーブル
+# (\u2010-\u2015, \uFE58, \uFE63, \uFF0D など)
+DASH_CHARS = "\u2010\u2011\u2012\u2013\u2014\u2015\uFE58\uFE63\uFF0D"
+DASH_TRANSLATE_TABLE = str.maketrans(DASH_CHARS, "-" * len(DASH_CHARS))
+
 def normalize_term(term: str) -> str:
     """
     Wiki全体で共通の用語正規化ロジック。
@@ -28,8 +33,7 @@ def normalize_term(term: str) -> str:
     t = unicodedata.normalize("NFKC", term)
     
     # 各種ハイフン・ダッシュ類を ASCII ハイフンに統一
-    # (\u2010-\u2015, \uFE58, \uFE63, \uFF0D など)
-    t = re.sub(r'[\u2010\u2011\u2012\u2013\u2014\u2015\uFE58\uFE63\uFF0D]', '-', t)
+    t = t.translate(DASH_TRANSLATE_TABLE)
     
     # 全角括弧→半角
     t = t.replace('（', '(').replace('）', ')')
@@ -114,15 +118,8 @@ def auto_link_concepts(body: str, concepts: List[str]) -> str:
         return body
 
     # ハイフンの正規化 (各種ダッシュを標準ハイフンに)
-    for dash in ["\u2010", "\u2011", "\u2012", "\u2013", "\u2014", "\uFF0D"]:
-        body = body.replace(dash, "-")
-    
-    normalized_concepts = []
-    for c in concepts:
-        nc = c
-        for dash in ["\u2010", "\u2011", "\u2012", "\u2013", "\u2014", "\uFF0D"]:
-            nc = nc.replace(dash, "-")
-        normalized_concepts.append(nc)
+    body = body.translate(DASH_TRANSLATE_TABLE)
+    normalized_concepts = [c.translate(DASH_TRANSLATE_TABLE) for c in concepts]
 
     placeholders = {}
     
