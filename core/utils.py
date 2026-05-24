@@ -7,11 +7,7 @@ from ruamel.yaml import YAML
 from io import StringIO
 from functools import lru_cache
 
-# YAMLハンドラーの初期化
-# 安全なロード用 (CVE対策)
-yaml_safe = YAML(typ='safe')
-
-# スタイルを維持したダンプ用
+# YAMLハンドラーの初期化 (コメントとスタイルを維持)
 yaml = YAML()
 yaml.preserve_quotes = True
 yaml.indent(mapping=2, sequence=4, offset=2)
@@ -67,7 +63,7 @@ def parse_frontmatter(content: str) -> tuple[Optional[Dict[str, Any]], str]:
         fm_text = match.group(1)
         body = content[match.end():].strip()
         try:
-            data = yaml_safe.load(fm_text)
+            data = yaml.load(fm_text)
             return dict(data) if data else {}, body
         except Exception:
             return None, content
