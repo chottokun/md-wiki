@@ -21,7 +21,7 @@ from core.utils import (
 from ingestion.docling_parser import DoclingParser
 from retrieval.qdrant_store import QdrantHybridStore
 from output.obsidian_writer import ObsidianWriter
-from core.schemas import WikiPageSchema, WikiMetadataSchema, UpdateDecisionSchema
+from core.schemas import WikiPageSchema, WikiMetadataSchema, UpdateDecisionSchema, DraftConfig
 from core.prompts import (
     get_ingest_prompt,
     get_lint_body_prompt,
@@ -413,13 +413,13 @@ def review_node(state: AgentState) -> Dict[str, Any]:
 
     writer = get_obsidian_writer()
     # レビュー用ファイルの作成 (ソース情報も引き継ぐ)
-    save_path = writer.create_draft_file(
-        target, 
-        content,
+    save_path = writer.create_draft_file(DraftConfig(
+        page_name=target,
+        proposed_content=content,
         source_filename=Path(input_path).name if input_path else None,
         source_path=input_path,
         raw_markdown=raw_md
-    )
+    ))
     logger.info(f"📝 Review draft created: {save_path}")
     
     return {"target_page": target, "proposed_content": content, "status": "reviewed"}

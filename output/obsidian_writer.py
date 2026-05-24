@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional
 
 from core.config import Config
-from core.schemas import WikiFrontmatterSchema
+from core.schemas import WikiFrontmatterSchema, DraftConfig
 from core.utils import normalize_term, parse_frontmatter, dump_frontmatter
 
 logger = logging.getLogger(__name__)
@@ -89,19 +89,15 @@ class ObsidianWriter:
         diff = difflib.unified_diff(old_lines, new_lines, lineterm="")
         return "\n".join(list(diff)[2:]) # ヘッダーを除去
 
-    def create_draft_file(self, page_name: str, proposed_content: str, 
-                         source_filename: Optional[str] = None, 
-                         source_path: Optional[str] = None,
-                         raw_markdown: Optional[str] = None,
-                         sub_dir: Optional[str] = None) -> Path:
+    def create_draft_file(self, config: DraftConfig) -> Path:
         """
         レビュー用のファイルを wiki/ (または sub_dir) に作成する。
         """
-        safe_page_name = normalize_term(page_name)
+        safe_page_name = normalize_term(config.page_name)
 
         # ディレクトリトラバーサル対策
-        if sub_dir:
-            target_dir = self._get_safe_path(self.wiki_dir, sub_dir)
+        if config.sub_dir:
+            target_dir = self._get_safe_path(self.wiki_dir, config.sub_dir)
         else:
             target_dir = self.wiki_dir
 
@@ -110,8 +106,8 @@ class ObsidianWriter:
         filename = safe_page_name if safe_page_name.endswith(".md") else f"{safe_page_name}.md"
         wiki_path = self._get_safe_path(target_dir, filename)
         
-        source_link = self._handle_source_file(source_filename, source_path) if source_filename else None
-        raw_link = self._handle_raw_markdown(safe_page_name, raw_markdown) if raw_markdown else None
+        source_link = self._handle_source_file(config.source_filename, config.source_path) if config.source_filename else None
+        raw_link = self._handle_raw_markdown(safe_page_name, config.raw_markdown) if config.raw_markdown else None
 
         existing_data = None
         original_body = ""
@@ -120,7 +116,7 @@ class ObsidianWriter:
             existing_data, original_body = parse_frontmatter(wiki_path.read_text(encoding="utf-8"))
 
         # 新しいコンテンツのパース
-        proposed_data, proposed_body = parse_frontmatter(proposed_content)
+        proposed_data, proposed_body = parse_frontmatter(config.proposed_content)
         
         # クレンジング
         proposed_body = re.sub(r'^```(?:markdown|md)?\s*\n', '', proposed_body.strip())
@@ -141,7 +137,7 @@ class ObsidianWriter:
                 if key not in ["tags", "sources", "aliases", "created", "updated"]:
                     base_data[key] = val
 
-        merged_data = self._prepare_metadata(base_data, source_link, raw_link, page_name)
+        merged_data = self._prepare_metadata(base_data, source_link, raw_link, config.page_name)
         logger.info(f"FINAL MERGED TAGS: {merged_data.get('tags')}")
         
         diff_text = self.generate_diff(original_body, proposed_body) if is_update else ""
@@ -152,7 +148,7 @@ class ObsidianWriter:
         
         body_content = proposed_body.strip()
         if not body_content.startswith("# "):
-            body_content = f"# {page_name}\n\n{body_content}"
+            body_content = f"# {config.page_name}\n\n{body_content}"
         
         final_content = f"{final_fm}\n\n{diff_section}\n{body_content}\n{footer}"
         wiki_path.write_text(final_content.strip(), encoding="utf-8")
@@ -249,14 +245,15 @@ class ObsidianWriter:
 {concepts_str}
 """
         full_content = f"{dump_frontmatter(metadata)}\n\n{final_body.strip()}"
-        return self.create_draft_file(
-            page_name, 
-            full_content, 
+        config = DraftConfig(
+            page_name=page_name,
+            proposed_content=full_content,
             source_filename=data.get("source_filename"),
             source_path=data.get("source_path"),
             raw_markdown=data.get("raw_markdown"),
             sub_dir=sub_dir
         )
+        return self.create_draft_file(config)
 
     def _handle_source_file(self, filename: Optional[str], source_path: Optional[str] = None) -> Optional[str]:
         if not filename: return None

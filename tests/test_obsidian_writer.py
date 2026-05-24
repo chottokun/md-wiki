@@ -2,6 +2,7 @@ import pytest
 from pathlib import Path
 import shutil
 from output.obsidian_writer import ObsidianWriter
+from core.schemas import DraftConfig
 from core.utils import parse_frontmatter
 
 @pytest.fixture
@@ -15,7 +16,7 @@ def test_create_draft_new_file(temp_wiki):
     page_name = "Test Page"
     content = "# Hello World"
     
-    path = writer.create_draft_file(page_name, content)
+    path = writer.create_draft_file(DraftConfig(page_name=page_name, proposed_content=content))
     
     assert path.exists()
     assert path.name == "test_page.md"
@@ -30,11 +31,11 @@ def test_create_draft_update_existing(temp_wiki):
     page_name = "Update Test"
     
     # 1回目：新規作成
-    writer.create_draft_file(page_name, "---\ntags: [old]\n---\nOld Content")
+    writer.create_draft_file(DraftConfig(page_name=page_name, proposed_content="---\ntags: [old]\n---\nOld Content"))
     
     # 2回目：更新
     new_content = "# New Content"
-    path = writer.create_draft_file(page_name, new_content)
+    path = writer.create_draft_file(DraftConfig(page_name=page_name, proposed_content=new_content))
     
     full_text = path.read_text(encoding="utf-8")
     data, body = parse_frontmatter(full_text)

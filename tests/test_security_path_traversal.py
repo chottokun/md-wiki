@@ -1,6 +1,7 @@
 import pytest
 from pathlib import Path
 from output.obsidian_writer import ObsidianWriter
+from core.schemas import DraftConfig
 import os
 import shutil
 
@@ -23,7 +24,7 @@ def test_path_traversal_fix():
 
     try:
         # 修正後はここで ValueError が発生するはず
-        path = writer.create_draft_file(page_name, "content", sub_dir=malicious_sub_dir)
+        path = writer.create_draft_file(DraftConfig(page_name=page_name, proposed_content="content", sub_dir=malicious_sub_dir))
         
         # もし例外が発生せずにここに来たら、まだ脆弱
         if evil_path.exists():

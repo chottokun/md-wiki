@@ -2,6 +2,7 @@ import pytest
 from pathlib import Path
 from core.utils import normalize_term, parse_frontmatter, dump_frontmatter, extract_json_from_text
 from output.obsidian_writer import ObsidianWriter
+from core.schemas import DraftConfig
 
 @pytest.fixture
 def temp_wiki(tmp_path):
@@ -75,7 +76,7 @@ def test_new_file_has_no_diff(temp_wiki):
     """新規作成ファイルにDiffブロックが混入しない"""
     writer = ObsidianWriter(wiki_dir=str(temp_wiki))
     content = "# Brand New Page\n\nSome content here."
-    path = writer.create_draft_file("New Topic", content)
+    path = writer.create_draft_file(DraftConfig(page_name="New Topic", proposed_content=content))
     
     text = path.read_text(encoding="utf-8")
     assert "> [!info]" not in text
@@ -95,11 +96,11 @@ def test_update_preserves_sources(temp_wiki):
     
     # 初回作成（sourcesつきのYAML）
     first = "---\nsources: [\"source_a\"]\n---\n# Page A"
-    writer.create_draft_file("merge_test", first)
+    writer.create_draft_file(DraftConfig(page_name="merge_test", proposed_content=first))
     
     # 2回目（別のsourcesで上書き）
     second = "---\nsources: [\"source_b\"]\n---\n# Page A Updated"
-    path = writer.create_draft_file("merge_test", second)
+    path = writer.create_draft_file(DraftConfig(page_name="merge_test", proposed_content=second))
     
     data, body = parse_frontmatter(path.read_text(encoding="utf-8"))
     # 両方のソースが残っていること

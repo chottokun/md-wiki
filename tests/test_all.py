@@ -201,6 +201,7 @@ class TestDumpFrontmatter:
 # 2. ObsidianWriter テスト
 # ──────────────────────────────────────────────────
 from output.obsidian_writer import ObsidianWriter
+from core.schemas import DraftConfig
 
 class TestObsidianWriterCreateDraft:
     """create_draft_file のファイル生成とメタデータを検証。"""
@@ -208,7 +209,7 @@ class TestObsidianWriterCreateDraft:
     def test_new_file_has_tags(self, tmp_path):
         writer = ObsidianWriter(wiki_dir=tmp_path)
         content = dump_frontmatter({"tags": ["RAG", "LLM"]}) + "\n\n# Title\nBody"
-        path = writer.create_draft_file("test_page", content)
+        path = writer.create_draft_file(DraftConfig(page_name="test_page", proposed_content=content))
 
         result = path.read_text(encoding="utf-8")
         data, _ = parse_frontmatter(result)
@@ -221,10 +222,10 @@ class TestObsidianWriterCreateDraft:
         writer = ObsidianWriter(wiki_dir=tmp_path)
         # 1回目: 既存ファイルを作成
         first = dump_frontmatter({"tags": ["existing"]}) + "\n\nOld body"
-        writer.create_draft_file("merge_test", first)
+        writer.create_draft_file(DraftConfig(page_name="merge_test", proposed_content=first))
         # 2回目: 新タグ付きで更新
         second = dump_frontmatter({"tags": ["new_tag"]}) + "\n\nNew body"
-        path = writer.create_draft_file("merge_test", second)
+        path = writer.create_draft_file(DraftConfig(page_name="merge_test", proposed_content=second))
 
         data, _ = parse_frontmatter(path.read_text(encoding="utf-8"))
         assert "existing" in data["tags"]
@@ -234,7 +235,7 @@ class TestObsidianWriterCreateDraft:
     def test_sub_dir(self, tmp_path):
         writer = ObsidianWriter(wiki_dir=tmp_path)
         content = "# Concept\nBody"
-        path = writer.create_draft_file("concept_page", content, sub_dir="concepts")
+        path = writer.create_draft_file(DraftConfig(page_name="concept_page", proposed_content=content, sub_dir="concepts"))
         assert "concepts" in str(path)
         assert path.exists()
 
@@ -242,7 +243,7 @@ class TestObsidianWriterCreateDraft:
         """CP932 で表現不能な文字を含んでもエラーにならない。"""
         writer = ObsidianWriter(wiki_dir=tmp_path)
         content = "# ✨🚀🔗\nEmoji body"
-        path = writer.create_draft_file("emoji_test", content)
+        path = writer.create_draft_file(DraftConfig(page_name="emoji_test", proposed_content=content))
         result = path.read_text(encoding="utf-8")
         assert "✨" in result
 
