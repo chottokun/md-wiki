@@ -205,15 +205,21 @@ def _generate_stub_data(term: str, context: str, source_links: list, evidences: 
             raw_concepts = llm.invoke(fallback_prompt).content
             new_concepts = parse_and_filter_concepts(raw_concepts)
         except: new_concepts = []
+        
+        paragraphs = [p.strip() for p in clean_body.split("\n\n") if p.strip() and not p.strip().startswith("#") and not p.strip().startswith(">")]
+        fallback_abstract = paragraphs[0][:200] if paragraphs else f"{term}に関する解説スタブ記事。"
+        
         data = {
             "title": normalize_term(term.strip().replace("[[", "").replace("]]", "")),
-            "abstract": "(自動生成スタブ)",
-            "concepts": concepts,
-            "body": final_body,
-            "tags": tags,
+            "abstract": fallback_abstract,
+            "concepts": new_concepts,
+            "body": clean_body,
+            "tags": ["未審査"],
             "aliases": []
         }
     return data
+
+
 
 def lint_node(state: AgentState) -> Dict[str, Any]:
     """孤立した赤リンク（未作成ページ）を特定し、スタブ記事を自動生成する。"""
@@ -237,7 +243,7 @@ def lint_node(state: AgentState) -> Dict[str, Any]:
         # スタブ作成
         writer.create_draft_from_schema(data, sub_dir="concepts")
         count += 1
-        if count >= 5: break # 1回につき最大5つまで
+        if count >= 50: break # 1回につき最大50個まで
     
     return {"status": "linted"}
 
