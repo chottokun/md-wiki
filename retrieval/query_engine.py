@@ -1,7 +1,6 @@
-import re
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Optional
+from typing import List, Optional
 from langchain_core.documents import Document
 from core.llm_router import LLMLayer
 from core.config import Config

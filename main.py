@@ -3,9 +3,6 @@ import uuid
 import logging
 import argparse
 import os
-import re
-import git
-from pathlib import Path
 from typing import Dict, Any
 
 if sys.platform == "win32":

@@ -228,6 +228,9 @@ def extract_json_from_text(text: str) -> Optional[str]:
 
 def _extract_balanced_json(text: str) -> Optional[str]:
     """最初に見つかった { から、対応する } までの範囲を抽出する。"""
+    if text.count("{") != text.count("}"):
+        return None
+        
     start = text.find("{")
     if start == -1:
         return None
