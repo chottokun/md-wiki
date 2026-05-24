@@ -46,12 +46,13 @@ class QdrantHybridStore:
         import urllib.request
         ollama_running = False
         ollama_url = os.getenv("LOCALLLM_BASE_URL", "http://localhost:11434")
-        try:
-            with urllib.request.urlopen(ollama_url, timeout=1.0) as response:
-                if response.status == 200:
-                    ollama_running = True
-        except Exception:
-            pass
+        if ollama_url.startswith(("http://", "https://")):
+            try:
+                with urllib.request.urlopen(ollama_url, timeout=1.0) as response:  # nosec B310
+                    if response.status == 200:
+                        ollama_running = True
+            except Exception:  # nosec B110
+                pass
 
         if ollama_running:
             logger.info("Ollama is running. Using OllamaEmbeddings.")

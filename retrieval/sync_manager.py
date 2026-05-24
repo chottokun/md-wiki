@@ -17,7 +17,7 @@ class GitSyncManager:
     def __init__(self, store: QdrantHybridStore, wiki_dir: Path = None):
         self.store = store
         self.wiki_dir = wiki_dir.absolute() if wiki_dir else Config.WIKI_DIR.absolute()
-        self.repo = git.Repo(self.wiki_dir)
+        self.repo = git.Repo(self.wiki_dir, search_parent_directories=True)
         # 同期状態ファイル
         self.state_file = self.wiki_dir / ".md-wiki-sync-state"
 

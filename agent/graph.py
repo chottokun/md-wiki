@@ -11,6 +11,7 @@ from core.llm_router import router, LLMLayer
 from core.utils import (
     normalize_term, 
     parse_frontmatter, 
+    dump_frontmatter,
     is_technical_term, 
     auto_link_concepts, 
     get_all_concepts, 
@@ -371,9 +372,31 @@ def draft_node(state: AgentState) -> Dict[str, Any]:
             "raw_markdown": state.get("raw_markdown")
         }
     
-    return {"proposed_data": proposed_data, "status": "drafted"}
+    # proposed_data から proposed_content を組み立てる
+    metadata_fm = {
+        "tags": proposed_data.get("tags", []),
+        "aliases": proposed_data.get("aliases", []),
+        "concepts": proposed_data.get("concepts", []),
+        "abstract": proposed_data.get("abstract", "")
+    }
+    if proposed_data.get("source_filename"):
+        metadata_fm["sources"] = [f"[[sources/{proposed_data.get('source_filename')}]]"]
+        
+    concepts_str = "\n".join([f"- {c}" for c in proposed_data.get("concepts", [])])
+    
+    final_body_md = f"""# {proposed_data['title']}
 
-    return {"proposed_content": proposed_content, "status": "refined"}
+> [!abstract] 要約
+> {proposed_data['abstract']}
+
+{proposed_data['body']}
+
+## 💡 主要な概念
+{concepts_str}
+"""
+    proposed_content = f"{dump_frontmatter(metadata_fm)}\n\n{final_body_md.strip()}"
+    
+    return {"proposed_data": proposed_data, "proposed_content": proposed_content, "status": "drafted"}
 
 def conflict_node(state: AgentState) -> Dict[str, Any]:
     """コンフリクトマーカーが含まれるドキュメントを整理・解消する。"""

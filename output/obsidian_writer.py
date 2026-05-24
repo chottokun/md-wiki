@@ -125,7 +125,7 @@ class ObsidianWriter:
         # メタデータのマージ
         base_data = existing_data if existing_data else {}
         if proposed_data:
-            for key in ["tags", "sources", "aliases"]:
+            for key in ["tags", "sources", "aliases", "concepts"]:
                 p_val = proposed_data.get(key, [])
                 if isinstance(p_val, str): p_val = [p_val]
                 e_val = base_data.get(key, [])
@@ -134,7 +134,7 @@ class ObsidianWriter:
                 if combined: base_data[key] = combined
             
             for key, val in proposed_data.items():
-                if key not in ["tags", "sources", "aliases", "created", "updated"]:
+                if key not in ["tags", "sources", "aliases", "concepts", "created", "updated"]:
                     base_data[key] = val
 
         merged_data = self._prepare_metadata(base_data, source_link, raw_link, config.page_name)
@@ -185,6 +185,10 @@ class ObsidianWriter:
             fm.aliases = [a.replace('\u2011', '-').replace('\u2010', '-').replace('\uFF0D', '-').strip() for a in fm.aliases]
             fm.aliases = [a for a in fm.aliases if a]
 
+            # concepts 内の特殊ハイフンも標準ハイフンにクレンジングし重複排除
+            fm.concepts = [c.replace('\u2011', '-').replace('\u2010', '-').replace('\uFF0D', '-').strip() for c in fm.concepts]
+            fm.concepts = sorted(list(set([c for c in fm.concepts if c])))
+
             # エイリアスが空の場合、ページ名から年度サフィックスや括弧を除外した自動エイリアスを提案
             if not fm.aliases and page_name:
                 cleaned_alias = re.sub(r'_\d{4}$', '', page_name)
@@ -224,6 +228,7 @@ class ObsidianWriter:
         metadata = {
             "tags": list(set(data.get("tags", []) + (nested_data.get("tags", []) if nested_data else []))),
             "aliases": list(set(data.get("aliases", []) + (nested_data.get("aliases", []) if nested_data else []))),
+            "concepts": list(set(data.get("concepts", []) + (nested_data.get("concepts", []) if nested_data else []))),
             "sources": list(set(data.get("sources", []) + (nested_data.get("sources", []) if nested_data else []))),
             "abstract": data.get("abstract", "")
         }

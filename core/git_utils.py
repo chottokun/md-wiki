@@ -13,7 +13,7 @@ def run_git_commit(message: str):
     """
     try:
         wiki_dir = Config.WIKI_DIR
-        repo = git.Repo(wiki_dir)
+        repo = git.Repo(wiki_dir, search_parent_directories=True)
 
         lock_file = wiki_dir / ".git" / "index.lock"
         if lock_file.exists():

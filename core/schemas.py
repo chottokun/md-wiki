@@ -43,6 +43,7 @@ class WikiFrontmatterSchema(BaseModel):
     """Obsidian の YAML Frontmatter を定義する厳密なスキーマ。"""
     tags: List[str] = Field(default_factory=list)
     aliases: List[str] = Field(default_factory=list)
+    concepts: List[str] = Field(default_factory=list)
     abstract: Optional[str] = Field(default=None)
     type: str = Field(default="wiki")
     created: Optional[str] = Field(default=None)
@@ -59,7 +60,7 @@ class WikiFrontmatterSchema(BaseModel):
             return f"{v}（詳細な要約が不足しています）"
         return v
 
-    @field_validator("tags", "aliases", "sources", mode="before")
+    @field_validator("tags", "aliases", "sources", "concepts", mode="before")
     @classmethod
     def _ensure_list(cls, v: Any) -> List[str]:
         if v is None:
