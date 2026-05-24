@@ -2,10 +2,9 @@ import os
 import re
 import shutil
 import logging
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List
 from pathlib import Path
 from datetime import datetime
-from concurrent.futures import ProcessPoolExecutor
 from core.utils import normalize_term, parse_frontmatter, dump_frontmatter
 
 from core.config import Config
@@ -341,20 +340,19 @@ class ObsidianWriter:
         page_list = []
         tag_map = {}
 
-        # Parallel processing of file reading and parsing
-        # ruamel.yaml (used in parse_frontmatter) is safe because it is loaded independently in each process
-        with ProcessPoolExecutor() as executor:
-            results = list(executor.map(_process_page_for_index, sorted(pages)))
+        for p in sorted(pages):
+            try:
+                content = p.read_text(encoding="utf-8")
+                data, _ = parse_frontmatter(content)
+                tags = data.get("tags", []) if data else []
+                if isinstance(tags, str): tags = [tags]
 
-        for p, stem, tags, error in results:
-            if error:
-                logger.error(f"Error indexing page {p}: {error}")
-                continue
-
-            if stem:
-                page_list.append(f"- [[{stem}]]")
+                page_list.append(f"- [[{p.stem}]]")
                 for tag in tags:
-                    tag_map.setdefault(tag, []).append(f"[[{stem}]]")
+                    tag_map.setdefault(tag, []).append(f"[[{p.stem}]]")
+            except Exception as e:
+                logger.error(f"Error indexing page {p}: {e}")
+                continue
 
         # タグセクションの生成
         tag_section_parts = []
@@ -379,19 +377,3 @@ class ObsidianWriter:
 
         index_md = "\n\n".join(s.strip() for s in sections if s.strip())
         (self.wiki_dir / "Home.md").write_text(index_md, encoding="utf-8")
-
-def _process_page_for_index(p: Path) -> Tuple[Path, Optional[str], List[str], Optional[str]]:
-    """
-    Module-level helper function for ProcessPoolExecutor.
-    Returns (path, stem, tags, error_message).
-    """
-    try:
-        content = p.read_text(encoding="utf-8")
-        data, _ = parse_frontmatter(content)
-        tags = data.get("tags", []) if data else []
-        if isinstance(tags, str):
-            tags = [tags]
-        return p, p.stem, tags, None
-    except Exception as e:
-        # Errors are handled in the main process to ensure proper logging
-        return p, None, [], str(e)
