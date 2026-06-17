@@ -20,6 +20,8 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "qdrant-client>=1.17.1",
     "ruamel-yaml>=0.19.1",
+    "mkdocs>=1.6.1",
+    "mkdocs-material>=9.5.34",
 ]
 
 [tool.setuptools.packages.find]

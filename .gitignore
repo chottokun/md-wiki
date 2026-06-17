@@ -54,3 +54,7 @@ _staged/
 
 # --- OKF formatted
 plan\okf
+
+# --- MkDocs & Build Outputs ---
+site/
+dist/
