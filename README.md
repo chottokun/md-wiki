@@ -187,3 +187,13 @@ md-wiki/
 - **Vector DB**: [Qdrant](https://qdrant.tech/) (Dense + Sparse Hybrid Search with Local Persistence)
 - **PDF Parser**: [Docling v2](https://github.com/DS4SD/docling) (High-fidelity Document Layout Analysis)
 - **Knowledge IDE**: [Obsidian](https://obsidian.md/) (Local-first Markdown Vault)
+
+---
+
+## 📜 ライセンスとクレジット (License & Credits)
+
+- **Open Knowledge Format (OKF)**: 本システムのナレッジベース構造およびメタデータ定義は、Google Cloud が提唱するオープンナレッジ仕様である **Open Knowledge Format (OKF) v0.1**（Apache 2.0 License の元で公開）をベースに設計・実装されています。ナレッジ共有の標準化を推進する素晴らしい仕様を公開してくださった Google Cloud に深く感謝いたします。
+- **ライセンス**:
+  - 本システムのソースコードは MIT ライセンスの元で公開されています。
+  - 本システムによって管理・出力される Wiki データの構成およびフォーマットは、OKF 仕様に従って Apache 2.0 ライセンスの範囲で自由に利用可能です。
+
