@@ -28,7 +28,7 @@ def test_create_draft_from_schema(tmp_path):
 
     # 1. YAMLフロントマターの存在
     assert "---" in content
-    assert "type: wiki" in content
+    assert "type: Article" in content
     assert "TDD" in content
     assert "Test Driven Development" in content
 

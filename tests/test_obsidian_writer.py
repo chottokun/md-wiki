@@ -53,6 +53,6 @@ def test_initialization_flow(temp_wiki):
     writer = ObsidianWriter(wiki_dir=str(temp_wiki))
     writer.update_index()
     
-    home_path = temp_wiki / "Home.md"
+    home_path = temp_wiki / "index.md"
     assert home_path.exists()
-    assert "# 🏠 RAG-Wiki Home" in home_path.read_text(encoding="utf-8")
+    assert "# md-wiki Knowledge Bundle" in home_path.read_text(encoding="utf-8")

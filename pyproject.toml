@@ -10,6 +10,7 @@ dependencies = [
     "gitpython>=3.1.50",
     "langchain>=1.2.15",
     "langchain-community>=0.4.1",
+    "langchain-google-genai>=4.2.5",
     "langchain-ollama>=1.1.0",
     "langchain-openai>=1.2.1",
     "langchain-qdrant>=1.1.0",

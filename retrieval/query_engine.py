@@ -5,7 +5,7 @@ from langchain_core.documents import Document
 from core.llm_router import LLMLayer
 from core.config import Config
 from core.prompts import get_query_prompt
-from core.utils import WIKI_LINK_RE
+from core.utils import WIKI_LINK_RE, safe_get_content
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class WikiQueryEngine:
         prompt = self._build_prompt(query_text, context, lang_inst)
         response = llm.invoke(prompt)
         
-        return response.content
+        return safe_get_content(response.content)
 
     def _find_link_path(self, link: str) -> Optional[Path]:
         """

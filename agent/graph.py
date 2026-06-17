@@ -17,7 +17,8 @@ from core.utils import (
     get_all_concepts, 
     parse_and_filter_concepts,
     extract_json_from_text,
-    WIKI_LINK_RE
+    WIKI_LINK_RE,
+    safe_get_content
 )
 from ingestion.docling_parser import DoclingParser
 from retrieval.qdrant_store import QdrantHybridStore
@@ -202,7 +203,7 @@ def _generate_stub_data(term: str, context: str, source_links: list, evidences: 
         logger.warning(f"Metadata extraction failed in lint_node for {term}: {e}")
         fallback_prompt = get_fallback_prompt(clean_body)
         try:
-            raw_concepts = llm.invoke(fallback_prompt).content
+            raw_concepts = safe_get_content(llm.invoke(fallback_prompt).content)
             new_concepts = parse_and_filter_concepts(raw_concepts)
         except: new_concepts = []
         
@@ -296,7 +297,7 @@ def refine_node(state: AgentState) -> Dict[str, Any]:
         return {"proposed_data": proposed_data, "status": "refined"}
     except Exception as e:
         logger.warning(f"Structured output failed for refine_node: {e}. Falling back to text.")
-        raw_text = llm.invoke(prompt).content
+        raw_text = safe_get_content(llm.invoke(prompt).content)
         fallback_data = {
             "title": normalize_term(state['target_page']),
             "abstract": "更新されたコンテンツ（自動抽出失敗）",
@@ -313,7 +314,7 @@ def draft_node(state: AgentState) -> Dict[str, Any]:
     context = "\n\n".join([f"Source: {d.metadata.get('source')}\n{d.page_content}" for d in state["retrieved_docs"]])
     
     body_prompt = get_draft_body_prompt(state['target_page'], state['raw_markdown'], context)
-    body_text = llm.invoke(body_prompt).content
+    body_text = safe_get_content(llm.invoke(body_prompt).content)
     _, clean_body = parse_frontmatter(body_text)
     if not clean_body.strip(): clean_body = body_text
     
@@ -325,7 +326,7 @@ def draft_node(state: AgentState) -> Dict[str, Any]:
             metadata = metadata_llm.invoke(metadata_prompt)
         except Exception as se:
             logger.warning(f"Structured output failed in draft_node: {se}. Trying manual JSON extraction.")
-            raw_res = llm.invoke(metadata_prompt).content
+            raw_res = safe_get_content(llm.invoke(metadata_prompt).content)
             json_str = extract_json_from_text(raw_res)
             if json_str:
                 metadata = WikiMetadataSchema(**json.loads(json_str))
@@ -351,7 +352,7 @@ def draft_node(state: AgentState) -> Dict[str, Any]:
         logger.warning(f"Metadata extraction failed: {e}. Extracting from text via fallback LLM.")
         fallback_prompt = get_fallback_prompt(clean_body)
         try:
-            raw_concepts = llm.invoke(fallback_prompt).content
+            raw_concepts = safe_get_content(llm.invoke(fallback_prompt).content)
             new_concepts = parse_and_filter_concepts(raw_concepts)
         except Exception as e2:
             new_concepts = []
@@ -380,10 +381,11 @@ def draft_node(state: AgentState) -> Dict[str, Any]:
     
     # proposed_data から proposed_content を組み立てる
     metadata_fm = {
+        "type": "Article",
         "tags": proposed_data.get("tags", []),
         "aliases": proposed_data.get("aliases", []),
         "concepts": proposed_data.get("concepts", []),
-        "abstract": proposed_data.get("abstract", "")
+        "description": proposed_data.get("abstract", "")
     }
     if proposed_data.get("source_filename"):
         metadata_fm["sources"] = [f"[[sources/{proposed_data.get('source_filename')}]]"]
@@ -425,7 +427,7 @@ def conflict_node(state: AgentState) -> Dict[str, Any]:
         proposed_content = proposed_data.generate_markdown()
     except Exception as e:
         logger.warning(f"Structured output failed in conflict_node: {e}.")
-        res = llm.invoke(prompt).content
+        res = safe_get_content(llm.invoke(prompt).content)
         proposed_content = res
 
     return {"proposed_content": proposed_content, "status": "resolved"}

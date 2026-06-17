@@ -25,9 +25,11 @@ class TestQdrantHybridStoreMocked(unittest.TestCase):
             mock_client.return_value.collection_exists.return_value = True
             
             with patch("retrieval.qdrant_store.OllamaEmbeddings", return_value=MockEmbeddings()):
-                # QdrantVectorStoreのバリデーションを回避するために一部モック化
-                with patch("langchain_qdrant.qdrant.QdrantVectorStore._validate_collection_config"):
-                    self.store = QdrantHybridStore()
+                with patch("langchain_community.embeddings.fastembed.FastEmbedEmbeddings", return_value=MockEmbeddings()):
+                    with patch("langchain_qdrant.FastEmbedSparse") as mock_sparse:
+                        # QdrantVectorStoreのバリデーションを回避するために一部モック化
+                        with patch("langchain_qdrant.qdrant.QdrantVectorStore._validate_collection_config"):
+                            self.store = QdrantHybridStore()
 
     @patch("langchain_text_splitters.RecursiveCharacterTextSplitter.split_text")
     def test_add_text_uses_splitter(self, mock_split):

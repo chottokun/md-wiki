@@ -10,8 +10,8 @@
    Qdrant ベクトルデータベース内に、一次情報（Raw Source）の「不変の事実」と、AIおよび人間によって編集・構造化されたWiki（Compiled Wiki）の「流動的な知見」を共存させ、高精度なコンテキスト検索（Dense + Sparse ハイブリッド検索）を実現する。
 3. **Obsidian-Native HITL (Human-in-the-Loop)**
    AIは生成したドラフトを `wiki/` へ直接出力し、自動的に `tags: [未審査]` をフロントマターに付与する。人間は Obsidian などのマークダウンエディタ上で差分を確認・承認（`未審査` タグの削除）し、明示的に同期コマンドを実行することでインデックスへ反映させる。
-4. **Strict Metadata Governance (厳格なメタデータ統治)**
-   YAML Frontmatter の構造を Pydantic スキーマ (`WikiFrontmatterSchema`) で厳格に定義・強制する。要約の品質バリデータにより「自動生成スタブ」等の無意味な要約を排除し、高品質なナレッジネットワークを維持する。
+4. **OKF v0.1 Conformance (Open Knowledge Format 準拠)**
+   YAML Frontmatter の構造を OKF v0.1 規格に準拠し、Pydantic スキーマ (`WikiFrontmatterSchema`) で厳格に定義・強制する。`type` フィールドによる分類（Concept, Article, Source, RawSource 等）を行い、`timestamp` の ISO 8601 化、`index.md` によるディレクトリ解説、および `log.md` 履歴の OKF 日付グループ化をサポート。
 5. **Decoupled Repository Design (分離型リポジトリ設計)**
    システム本体のソースコード（メイン）と、ナレッジベース（`wiki/`）の Git リポジトリ履歴を完全に分離し、知識資産のポータビリティと独立したライフサイクルを確保する。
 
@@ -135,16 +135,38 @@ uv run python auto_rebuild.py
 uv run python reset_vault.py
 ```
 
+### OKF マイグレーションと適合性チェック
+
+既存の Wiki を OKF 形式に移行し、適合性を検証するためのツール群。
+
+**1. 一括マイグレーションスクリプト**
+```bash
+# 既存の wiki/ ディレクトリを OKF v0.1 形式へマイグレーション（バックアップ作成付き）
+uv run python migrate_to_okf.py --backup
+```
+
+**2. OKF 適合性チェック (Linter)**
+```bash
+# wiki/ ディレクトリの OKF v0.1 適合性チェックを実行
+uv run python okf_lint.py wiki/
+```
+
 ---
 
 ## 📁 ディレクトリ構造
 
 ```
 md-wiki/
-├── wiki/                   # 知識ベース（Obsidian Vault）。独立したGitリポジトリとして動作。
+├── wiki/                   # OKF Knowledge Bundle (Obsidian Vault)。独立したGitリポジトリ。
+│   ├── index.md            # OKF §6 ディレクトリインデックス（フロントマターなし）
+│   ├── log.md              # OKF §7 日付グループ化された更新履歴ログ
+│   ├── concepts/           # 技術用語解説（type: Concept）
+│   │   └── index.md        # 自動生成された用語インデックス
 │   ├── sources/            # 根拠となるオリジナルPDF等の保管庫
-│   └── raw_markdown/       # パース済みの一次テキスト中間出力
+│   └── raw_markdown/       # type: RawSource frontmatter が付与された解析済中間テキスト
 ├── _raw/                   # インジェスト前の生データ（PDF/MD）配置ディレクトリ
+├── migrate_to_okf.py       # OKF 移行用バッチマイグレーションツール
+├── okf_lint.py             # OKF v0.1 適合性チェッカー (Linter)
 ├── agent/                  # LangGraph による自律成長型エージェントワークフローの定義
 ├── core/                   # メタデータ(Pydantic)スキーマ、環境設定、LLMルーティングロジック
 ├── retrieval/              # ハイブリッド検索エンジン、GitおよびDB同期マネージャー

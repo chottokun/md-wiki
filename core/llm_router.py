@@ -92,11 +92,20 @@ class LLMRouter:
         return ChatOpenAI(**base_kwargs)
 
     def _get_gemini_model(self, layer: LLMLayer, **kwargs: Any) -> BaseChatModel:
-        """将来的なGemini API実装用のプレースホルダ。"""
-        raise NotImplementedError(
-            "Gemini API provider is not yet implemented. "
-            "Please add 'langchain-google-genai' to pyproject.toml and configure keys."
-        )
+        """Gemini APIモデルを取得。"""
+        from langchain_google_genai import ChatGoogleGenerativeAI
+        model_name = os.getenv("GEMINI_MODEL")
+        if not model_name:
+            if layer == LLMLayer.L3:
+                model_name = "gemini-1.5-pro"
+            else:
+                model_name = "gemini-1.5-flash"
+        base_kwargs = {
+            "model": model_name,
+            "api_key": os.getenv("GEMINI_API_KEY") or os.getenv("GEMINI_API"),
+        }
+        base_kwargs.update(kwargs)
+        return ChatGoogleGenerativeAI(**base_kwargs)
 
     def get_language_instruction(self) -> str:
         """

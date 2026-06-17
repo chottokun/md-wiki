@@ -60,11 +60,55 @@ def normalize_term(term: str) -> str:
     
     return t
 
-def parse_frontmatter(content: str) -> tuple[Optional[Dict[str, Any]], str]:
+def _migrate_legacy_frontmatter(data: Dict[str, Any]) -> Dict[str, Any]:
+    """レガシーフィールド名を OKF v0.1 準拠名にマイグレーションする。
+    
+    WikiFrontmatterSchema の model_validator と同等のロジックだが、
+    スキーマを介さない直接的なフロントマター操作にも対応する。
+    """
+    if not data:
+        return data
+    # abstract → description
+    if "abstract" in data and "description" not in data:
+        data["description"] = data.pop("abstract")
+    elif "abstract" in data and "description" in data:
+        data.pop("abstract")
+    # updated → timestamp
+    if "updated" in data and "timestamp" not in data:
+        data["timestamp"] = data.pop("updated")
+    elif "updated" in data and "timestamp" in data:
+        data.pop("updated")
+    # type: wiki → type: Article
+    if data.get("type") == "wiki":
+        data["type"] = "Article"
+    return data
+
+
+def safe_get_content(content: Any) -> str:
+    """
+    LangChainのAIMessage.contentなど、リストや文字列で返ってくる値を一貫して文字列として取得する。
+    """
+    if isinstance(content, str):
+        return content
+    elif isinstance(content, list):
+        text_parts = []
+        for part in content:
+            if isinstance(part, dict) and "text" in part:
+                text_parts.append(part["text"])
+            elif isinstance(part, str):
+                text_parts.append(part)
+        return "".join(text_parts)
+    elif content is None:
+        return ""
+    return str(content)
+
+
+def parse_frontmatter(content: Any) -> tuple[Optional[Dict[str, Any]], str]:
     """
     MarkdownからYAMLフロントマターと本文を分離してパースする。
+    レガシーフィールド名は OKF v0.1 準拠名に自動マイグレーションされる。
     """
-    content = content.strip()
+    content = safe_get_content(content).strip()
     # 末尾の改行があってもなくてもマッチするように修正
     match = re.search(r"^---\s*\n(.*?)\n---\s*(\n|$)", content, re.DOTALL)
     if match:
@@ -72,17 +116,36 @@ def parse_frontmatter(content: str) -> tuple[Optional[Dict[str, Any]], str]:
         body = content[match.end():].strip()
         try:
             data = yaml.load(fm_text)
-            return dict(data) if data else {}, body
+            result = dict(data) if data else {}
+            return _migrate_legacy_frontmatter(result), body
         except Exception:
             return None, content
     return None, content
 
+# OKF v0.1 推奨フィールド順序: type → title → description → resource → tags → timestamp → 拡張
+_OKF_FIELD_ORDER = [
+    "type", "title", "description", "resource", "tags", "timestamp",
+    # md-wiki extensions
+    "aliases", "concepts", "created", "sources",
+]
+
 def dump_frontmatter(data: Dict[str, Any]) -> str:
     """
     データをYAMLフロントマター形式の文字列に変換する。
+    OKF v0.1 準拠のフィールド順序で出力する。
     """
+    # OKF フィールド順序に従ってソート
+    ordered = {}
+    for key in _OKF_FIELD_ORDER:
+        if key in data:
+            ordered[key] = data[key]
+    # 残りのフィールド（producer-defined extensions）
+    for key, val in data.items():
+        if key not in ordered:
+            ordered[key] = val
+    
     stream = StringIO()
-    yaml.dump(data, stream)
+    yaml.dump(ordered, stream)
     return f"---\n{stream.getvalue().strip()}\n---\n"
 
 @lru_cache(maxsize=1)

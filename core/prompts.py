@@ -57,7 +57,7 @@ def get_metadata_prompt(body: str, title_or_term: str) -> list:
                    "以下のWiki記事からメタデータを抽出せよ。\n"
                    "【抽出ルール】\n"
                    f"- title: 記事のタイトル（{title_or_term}）\n"
-                   "- abstract: 3行程度の具体的かつ詳細な要約\n"
+                   "- description: 3行程度の具体的かつ詳細な要約 (OKF description)\n"
                    "- concepts: 本文中の主要な技術用語、固有名詞、概念のリスト（15個程度）\n"
                    "- tags: 分類タグのリスト（短く、スペースを含まない。関連する技術分野、カテゴリ、特徴などを5〜10個程度豊富に抽出してください）\n"
                    f"- aliases: タイトル '{title_or_term}' の完全な「別名」または「略称」のみをリスト化してください。関連用語は含めないでください。\n"

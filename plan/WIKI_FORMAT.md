@@ -9,38 +9,44 @@
 Wiki ページは以下の 4 つの主要ブロックで構成される。
 
 ### 1.1. YAML Frontmatter (Properties)
-Obsidian で「プロパティ」として認識されるメタデータ領域。`WikiFrontmatterSchema` に準拠する。
+Obsidian で「プロパティ」として認識されるメタデータ領域。OKF v0.1 に準拠し、`WikiFrontmatterSchema` に準拠する。
 
-- **`tags`**: 
-  - 必須: `#未審査` (新規・更新時)。
-  - その他: 技術分野、モデル名、タスク名など。
-- **`aliases`**: タイトルの「完全な別名」または「略称」。
-- **`abstract`**: 
-  - 恒久ページ: 3行程度の具体的要約。
+- **`type` (必須)**: 概念の分類。`Concept` (技術用語), `Article` (統合記事), `Source` (一次ソース), `RawSource` (解析テキスト), `Reference` (外部参照), `Landscape` (俯瞰)。
+- **`title` (推奨)**: 表示用の人間が読めるタイトル。
+- **`description` (推奨)**: 
+  - 恒久ページ: 1〜3行程度の具体的要約（旧 `abstract`）。
   - スタブ: `(自動生成スタブ: 本文の内容に基づき後日更新予定)`。
-- **`type`**: 固定値 `wiki`。
-- **`created` / `updated`**: `YYYY-MM-DD HH:mm` 形式。
-- **`sources`**: 引用元へのリンクリスト `[[sources/filename.pdf]]`。
+- **`resource` (推奨)**: 外部の正規の資産URI。
+- **`tags` (推奨)**: 
+  - 必須: `未審査` (新規・更新時)。
+  - その他: 技術分野、モデル名、タスク名など。
+- **`timestamp` (推奨)**: 最終更新日時 (ISO 8601 `YYYY-MM-DDTHH:MM:SS+09:00` 形式、旧 `updated`)。
+- **拡張 (Producer-defined)**:
+  - `aliases`: タイトルの「完全な別名」または「略称」。
+  - `concepts`: 本文中の主要概念リスト。
+  - `created`: 作成日時 (ISO 8601)。
+  - `sources`: 引用元へのリンクリスト `[[sources/filename.pdf]]`。
 
 ### 1.2. Abstract Callout (要約)
-ページ冒頭に配置される視覚的な要約。
+ページ冒頭に配置される視覚的な要約（md-wiki 固有の拡張）。
 
 - **形式**: Obsidian の `[!abstract]` コールアウトを使用。
 - **内容**: 
-  - 恒久ページ: 記事の核心を突く要約。
+  - 恒久ページ: 記事の核心を突く要約（`description` の内容と同期）。
   - スタブ: `(自動生成スタブ)`。
 
 ### 1.3. Main Content (本文)
 Markdown 形式の技術解説。
 
 - **H1見出し**: `# タイトル`（ファイル名と一致させる）。
-- **セクション構造**: `## 概要`, `## 詳細`, `## 💡 主要な概念` 等。
+- **セクション構造**: `## Overview`, `## 💡 主要な概念` 等。
 - **内部リンク**: 専門用語は積極的に `[[用語名]]` でリンク化する。
 - **視覚要素**: 複雑な比較には「Markdownテーブル」、手順には「箇条書き」を多用する。
 
-### 1.4. Footer (リソース)
+### 1.4. Citations (リソース引用 - OKF §8)
 - **`---` (水平線)**
-- **`## 🔗 リソース`**: 一次ソース (`sources/`) や原文 (`raw_markdown/`) へのリンク。
+- **`# Citations`**: 一次ソース (`sources/`) や原文 (`raw_markdown/`) へのリンク、または外部Webサイトへの参照。
+- **推奨**: Wiki の最下部に配置。
 
 ---
 

@@ -17,3 +17,6 @@ class Config:
     
     # Models cache directory
     MODELS_CACHE_DIR: Path = Path(os.getenv("MODELS_CACHE_DIR", ".cache"))
+    
+    # OKF Concept Types
+    OKF_CONCEPT_TYPES: list = ["Concept", "Article", "Source", "RawSource", "Reference", "Landscape"]

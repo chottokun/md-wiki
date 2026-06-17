@@ -30,10 +30,17 @@ class TestLLMRouter(unittest.TestCase):
     def test_unsupported_provider(self):
         # 未対応のプロバイダーが指定された場合の挙動
         # 注意: LLMProvider(value) は Enum にない値だと ValueError を投げる
-        with patch.dict(os.environ, {"LLM_PROVIDER": "gemini"}):
+        with patch.dict(os.environ, {"LLM_PROVIDER": "unsupported"}):
+            with self.assertRaises(ValueError):
+                LLMRouter()
+
+    def test_gemini_provider(self):
+        # Geminiプロバイダーが指定された場合の挙動
+        with patch.dict(os.environ, {"LLM_PROVIDER": "gemini", "GEMINI_API": "fake-key"}):
             router = LLMRouter()
-            with self.assertRaises(NotImplementedError):
-                router.get_model(LLMLayer.L1)
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            model = router.get_model(LLMLayer.L1)
+            self.assertIsInstance(model, ChatGoogleGenerativeAI)
 
 if __name__ == '__main__':
     unittest.main()

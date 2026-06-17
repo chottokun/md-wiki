@@ -14,7 +14,7 @@ def test_frontmatter_schema_normalization():
     fm = WikiFrontmatterSchema.model_validate(data)
     assert fm.tags == ["RAG", "LLM"]
     assert fm.aliases == ["Self-RAG"]
-    assert fm.type == "wiki"
+    assert fm.type == "Concept"
 
     # 2. 異常系・補正: 文字列が渡されてもリストに変換されるか（Pydanticの基本機能）
     # ※ Pydantic v2 のデフォルトでは List[str] に str は自動変換されないため、

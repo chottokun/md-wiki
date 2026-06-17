@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from core.utils import normalize_term, parse_frontmatter, dump_frontmatter, extract_json_from_text
+from core.utils import normalize_term, parse_frontmatter, dump_frontmatter, extract_json_from_text, safe_get_content
 from output.obsidian_writer import ObsidianWriter
 from core.schemas import DraftConfig
 
@@ -147,3 +147,23 @@ def test_extract_json_valid_but_malformed_json():
     (This is the responsibility of the caller or a dedicated JSON parser)
     """
     assert extract_json_from_text("{\"a\": }") == "{\"a\": }"
+
+def test_safe_get_content():
+    # String input
+    assert safe_get_content("test string") == "test string"
+    
+    # None input
+    assert safe_get_content(None) == ""
+    
+    # Dict input (falls back to str)
+    assert safe_get_content({"key": "val"}) == "{'key': 'val'}"
+    
+    # List of strings input
+    assert safe_get_content(["hello", " ", "world"]) == "hello world"
+    
+    # List of dicts (Gemini list-format response content parts)
+    assert safe_get_content([{"text": "hello"}, {"text": " "}, {"text": "world"}]) == "hello world"
+    
+    # List of mixed string and dicts
+    assert safe_get_content(["start ", {"text": "middle"}, " end"]) == "start middle end"
+

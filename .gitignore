@@ -52,3 +52,5 @@ _staged/
 # --- Python Build Artifacts ---
 *.egg-info/
 
+# --- OKF formatted
+plan\okf

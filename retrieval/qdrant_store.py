@@ -11,6 +11,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest_models
 from core.config import Config
+from core.utils import parse_frontmatter
 
 # ロギング設定
 logger = logging.getLogger(__name__)
@@ -143,7 +144,7 @@ class QdrantHybridStore:
         wiki_files = list(w_dir.glob("**/*.md"))
 
         def process_file(file_path: Path) -> List[Document]:
-            if any(x in file_path.name for x in [".md-wiki-sync-state", "Home.md", "log.md"]):
+            if any(x in file_path.name for x in [".md-wiki-sync-state", "Home.md", "index.md", "log.md"]):
                 return []
             
             try:
@@ -159,11 +160,19 @@ class QdrantHybridStore:
             source_name = file_path.stem
             is_raw = "raw_markdown" in str(file_path)
             
+            data, _ = parse_frontmatter(content)
+            
             if is_raw:
                 pdf_name = source_name.replace("_raw", "") + ".pdf"
-                return self.get_chunks(content, {"source": pdf_name, "type": "raw_source"})
+                doc_type = data.get("type", "RawSource") if data else "RawSource"
+                if doc_type == "raw_source":
+                    doc_type = "RawSource"
+                return self.get_chunks(content, {"source": pdf_name, "type": doc_type})
             else:
-                return self.get_chunks(content, {"source": source_name, "type": "wiki_page"})
+                doc_type = data.get("type", "Concept") if data else "Concept"
+                if doc_type == "wiki_page" or doc_type == "wiki":
+                    doc_type = "Article"
+                return self.get_chunks(content, {"source": source_name, "type": doc_type})
 
         all_documents = []
         with ThreadPoolExecutor() as executor:

@@ -11,7 +11,10 @@ class TestUILogic(unittest.TestCase):
     
     @patch('retrieval.qdrant_store.QdrantHybridStore.search')
     @patch('core.llm_router.LLMRouter.get_model')
-    def test_ui_query_integration(self, mock_get_model, mock_search):
+    @patch('retrieval.qdrant_store.QdrantClient')
+    @patch('langchain_community.embeddings.fastembed.FastEmbedEmbeddings')
+    @patch('langchain_qdrant.FastEmbedSparse')
+    def test_ui_query_integration(self, mock_sparse, mock_fastembed, mock_client, mock_get_model, mock_search):
         """UIのチャット機能から呼ばれる検索・生成プロセスの模倣。"""
         # モックの設定
         mock_model = MagicMock()
@@ -23,7 +26,8 @@ class TestUILogic(unittest.TestCase):
         
         # UI内のロジックをシミュレート
         query = "How to use md-wiki?"
-        docs = QdrantHybridStore().search(query, k=5)
+        with patch('langchain_qdrant.qdrant.QdrantVectorStore._validate_collection_config'):
+            docs = QdrantHybridStore().search(query, k=5)
         self.assertEqual(len(docs), 1)
         
         inst = router.get_language_instruction()

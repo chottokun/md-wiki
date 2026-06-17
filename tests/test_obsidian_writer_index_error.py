@@ -30,19 +30,15 @@ class TestObsidianWriterIndexError(unittest.TestCase):
         with patch.object(Path, 'read_text', autospec=True, side_effect=mocked_read_text):
             writer.update_index()
 
-        home_path = self.wiki_dir / "Home.md"
+        home_path = self.wiki_dir / "index.md"
         self.assertTrue(home_path.exists())
         content = home_path.read_text(encoding="utf-8")
 
-        # Verify page1 and page2 are present
-        self.assertIn("[[page1]]", content)
-        self.assertIn("[[page2]]", content)
+        # Verify page1 and page2 are present (in standard Markdown link format)
+        self.assertIn("[page1](page1.md)", content)
+        self.assertIn("[page2](page2.md)", content)
         # Verify bad_page is skipped
-        self.assertNotIn("[[bad_page]]", content)
-
-        # Verify tags (Note: Tag index format is "- #tag : [[page]]")
-        self.assertIn("#tag1 : [[page1]]", content)
-        self.assertIn("#tag2 : [[page2]]", content)
+        self.assertNotIn("bad_page", content)
 
 if __name__ == "__main__":
     unittest.main()

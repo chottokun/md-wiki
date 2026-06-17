@@ -137,7 +137,7 @@ class ObsidianWriter:
                 if key not in ["tags", "sources", "aliases", "concepts", "created", "updated"]:
                     base_data[key] = val
 
-        merged_data = self._prepare_metadata(base_data, source_link, raw_link, config.page_name)
+        merged_data = self._prepare_metadata(base_data, source_link, raw_link, config.page_name, sub_dir=config.sub_dir)
         logger.info(f"FINAL MERGED TAGS: {merged_data.get('tags')}")
         
         diff_text = self.generate_diff(original_body, proposed_body) if is_update else ""
@@ -156,9 +156,9 @@ class ObsidianWriter:
         logger.info(f"Draft created/updated: {wiki_path}")
         return wiki_path
 
-    def _prepare_metadata(self, base_data: Dict[str, Any], source_link: Optional[str], raw_link: Optional[str], page_name: Optional[str] = None) -> Dict[str, Any]:
+    def _prepare_metadata(self, base_data: Dict[str, Any], source_link: Optional[str], raw_link: Optional[str], page_name: Optional[str] = None, sub_dir: Optional[str] = None) -> Dict[str, Any]:
         """最終的なYAMLメタデータを構築し、Pydanticスキーマで厳密に管理する。"""
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+        now_str = datetime.now().strftime("%Y-%m-%dT%H:%M:%S+09:00")
         
         # 既存/新規データを統合
         merged_dict = base_data.copy()
@@ -175,8 +175,20 @@ class ObsidianWriter:
             
             # 日付とタイプの強制設定
             if not fm.created: fm.created = now_str
-            fm.updated = now_str
-            fm.type = "wiki"
+            fm.timestamp = now_str
+            
+            # type の動的判定
+            if not fm.type or fm.type in ["wiki", "Article", "Concept"]:
+                if sub_dir == "concepts":
+                    fm.type = "Concept"
+                elif sub_dir == "raw_markdown":
+                    fm.type = "RawSource"
+                elif sub_dir == "sources":
+                    fm.type = "Source"
+                elif sub_dir == "references":
+                    fm.type = "Reference"
+                elif not fm.type or fm.type == "wiki":
+                    fm.type = "Article"
             
             # タグとエイリアス内の特殊ハイフン (ノンブレイキングハイフンなど) を標準ハイフンにクレンジング
             fm.tags = [t.replace('\u2011', '-').replace('\u2010', '-').replace('\uFF0D', '-').strip() for t in fm.tags]
@@ -203,15 +215,15 @@ class ObsidianWriter:
             fm.tags = sorted(list(set(fm.tags)))
             fm.aliases = sorted(list(set(fm.aliases)))
 
-            # 要約（abstract）のクレンジング：ブロックコールのマークアップや太字記号を除去してプレーンテキストにする
-            if fm.abstract:
-                cleaned = fm.abstract
+            # 要約（description）のクレンジング：ブロックコールのマークアップや太字記号を除去してプレーンテキストにする
+            if fm.description:
+                cleaned = fm.description
                 cleaned = re.sub(r'>\s*\[!abstract\]\s*', '', cleaned, flags=re.IGNORECASE)
                 cleaned = re.sub(r'>\s*要約\s*', '', cleaned, flags=re.IGNORECASE)
                 cleaned = re.sub(r'^>\s*', '', cleaned, flags=re.MULTILINE)
                 cleaned = cleaned.replace('**', '').replace('__', '')
                 cleaned = cleaned.strip()
-                fm.abstract = cleaned
+                fm.description = cleaned
 
             return fm.model_dump(exclude_none=True)
         except Exception as e:
@@ -230,7 +242,8 @@ class ObsidianWriter:
             "aliases": list(set(data.get("aliases", []) + (nested_data.get("aliases", []) if nested_data else []))),
             "concepts": list(set(data.get("concepts", []) + (nested_data.get("concepts", []) if nested_data else []))),
             "sources": list(set(data.get("sources", []) + (nested_data.get("sources", []) if nested_data else []))),
-            "abstract": data.get("abstract", "")
+            "description": data.get("description", data.get("abstract", "")),
+            "type": data.get("type") or (nested_data.get("type") if nested_data else None) or ("Concept" if sub_dir == "concepts" else ("RawSource" if sub_dir == "raw_markdown" else "Article"))
         }
         
         # LLMが誤って生成した # タイトル や > [!abstract] コールアウトを本文から削除
@@ -242,7 +255,7 @@ class ObsidianWriter:
         final_body = f"""# {page_name}
 
 > [!abstract] 要約
-> {data.get('abstract', '')}
+> {data.get('description', data.get('abstract', ''))}
 
 {clean_body}
 
@@ -302,12 +315,24 @@ class ObsidianWriter:
         filename = f"{name}.md" if not name.endswith(".md") else name
         raw_path = self._get_safe_path(raw_dir, filename)
 
-        raw_path.write_text(content, encoding="utf-8")
+        now_str = datetime.now().strftime("%Y-%m-%dT%H:%M:%S+09:00")
+        fm_data = {
+            "type": "RawSource",
+            "title": f"Raw Source of {name}",
+            "description": f"Raw parsed markdown content for {name}",
+            "timestamp": now_str,
+            "tags": ["raw-source"]
+        }
+        fm_str = dump_frontmatter(fm_data)
+        full_content = f"{fm_str}\n{content}"
+
+        raw_path.write_text(full_content, encoding="utf-8")
         rel_path = raw_path.relative_to(self.wiki_dir).as_posix()
         return f"[[{rel_path}]]"
 
     def _generate_footer(self, source_link: Optional[str], raw_link: Optional[str]) -> str:
-        footer = "\n\n---\n## 🔗 関連リンク\n"
+        """OKF §8 準拠の Citations セクションを生成する。"""
+        footer = "\n\n# Citations\n"
         if source_link:
             footer += f"- 一次資料: {source_link}\n"
         if raw_link:
@@ -371,79 +396,125 @@ class ObsidianWriter:
             return False
 
     def add_log_entry(self, activity_type: str, details: str):
+        """OKF §7 準拠の log.md にエントリを追加する。
+        
+        日付グループ方式: 同一日のエントリはまとめる。
+        フォーマット: ## YYYY-MM-DD + * **Action**: description
+        """
         log_path = self.wiki_dir / "log.md"
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-        entry = f"## [{timestamp}] {activity_type} | {details}\n"
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(entry)
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        # アクション名の先頭を大文字に
+        action = activity_type.capitalize()
+        new_entry = f"* **{action}**: {details}\n"
+        
+        if log_path.exists():
+            content = log_path.read_text(encoding="utf-8")
+            today_heading = f"## {today_str}"
+            if today_heading in content:
+                # 同一日のセクションがある場合、その直後に追加
+                content = content.replace(today_heading + "\n", today_heading + "\n" + new_entry, 1)
+            else:
+                # 新しい日付セクションを先頭に追加（ヘッダーの直後）
+                header_end = content.find("\n") + 1 if content.startswith("# ") else 0
+                header = content[:header_end]
+                rest = content[header_end:].lstrip("\n")
+                content = f"{header}\n{today_heading}\n{new_entry}\n{rest}"
+            log_path.write_text(content.strip() + "\n", encoding="utf-8")
+            # 新規作成
+            content = f"# Directory Update Log\n\n## {today_str}\n{new_entry}"
+            log_path.write_text(content, encoding="utf-8")
 
     def update_index(self):
-        pages = sorted([p for p in self.wiki_dir.rglob("*.md") 
-                 if p.name not in ["Home.md", "log.md"] and "raw_markdown" not in str(p) and "sources" not in str(p)])
-                 
-        page_list = []
-        tag_map = {}
-
-        for p in pages:
-            try:
-                content = p.read_text(encoding="utf-8")
-                data, body = parse_frontmatter(content)
-                
-                # タグの抽出 (フロントマター + 本文)
-                tags = set()
-                
-                # 1. フロントマターから抽出
-                if data and "tags" in data:
-                    fm_tags = data["tags"]
-                    if isinstance(fm_tags, str):
-                        tags.add(fm_tags)
-                    elif isinstance(fm_tags, (list, set)):
-                        for t in fm_tags:
-                            if t: tags.add(str(t))
-                
-                # 2. 本文から抽出 (ヘッダーを除外しながら)
-                for line in body.splitlines():
-                    if re.match(r'^\s*#+\s+', line): # Markdownの見出し (# Header) を除外
-                        continue
-                    # TAG_PATTERN を使用してタグを抽出
-                    found = TAG_PATTERN.findall(line)
-                    for t in found:
-                        if t: tags.add(t)
-                
-                sorted_tags = sorted(list(tags))
-                
-                # ページリスト用 (タグを付与、重複排除済み)
-                tag_str = f" {' '.join(['#' + t for t in sorted_tags])}" if sorted_tags else ""
-                page_list.append(f"- [[{p.stem}]]{tag_str}")
-                
-                # タグ別マップ用 (タグインデックス生成用)
-                for tag in sorted_tags:
-                    tag_map.setdefault(tag, []).append(f"[[{p.stem}]]")
-                    
-            except Exception as e:
-                logger.error(f"Error indexing page {p}: {e}")
-                continue
-
-        # タグセクションの生成
-        tag_section_parts = []
-        for tag in sorted(tag_map.keys()):
-            pages_under_tag = ", ".join(sorted(list(set(tag_map[tag]))))
-            tag_section_parts.append(f"- #{tag} : {pages_under_tag}")
-
-        tag_section = "## 🏷️ タグ別インデックス\n" + "\n".join(tag_section_parts) if tag_section_parts else ""
-
-        now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
-
-        # コンテンツの結合 (最新の日本語表現を維持)
-        sections = [
-            "# 🏠 RAG-Wiki Home",
-            "## 📚 全ページ",
-            "\n".join(page_list) if page_list else "ページが見つかりません。"
-        ]
-        if tag_section:
-            sections.append(tag_section)
-
-        sections.append(f"---\n*Updated: {now_str}*")
-
-        index_md = "\n\n".join(s.strip() for s in sections if s.strip())
-        (self.wiki_dir / "Home.md").write_text(index_md, encoding="utf-8")
+        """OKF §6 準拠の index.md を自動生成する。
+        
+        - フロントマターなし（§6 準拠）
+        - 標準 Markdown リンクを使用（OKF 標準、選択肢A）
+        - 各エントリに description を付加
+        - サブディレクトリにも index.md を自動生成
+        """
+        # 予約ファイル名と除外ディレクトリ
+        reserved_files = {"index.md", "log.md"}
+        
+        # サブディレクトリの収集
+        subdirs = sorted([d for d in self.wiki_dir.iterdir() 
+                         if d.is_dir() and not d.name.startswith(".")])
+        
+        # ルート直下の概念ページ収集
+        root_pages = sorted([p for p in self.wiki_dir.glob("*.md")
+                            if p.name not in reserved_files])
+        
+        # --- ルート index.md の生成 ---
+        sections = ["# md-wiki Knowledge Bundle"]
+        
+        # サブディレクトリセクション
+        if subdirs:
+            sections.append("\n# Subdirectories\n")
+            for d in subdirs:
+                # サブディレクトリ内のページ数をカウント
+                md_count = len(list(d.rglob("*.md"))) - len(list(d.glob("index.md")))
+                sections.append(f"* [{d.name}]({d.name}/index.md) - {md_count} concepts")
+        
+        # ルート直下のページ
+        if root_pages:
+            sections.append("\n# Articles\n")
+            for p in root_pages:
+                try:
+                    desc = self._get_description(p)
+                    sections.append(f"* [{p.stem}]({p.name}) - {desc}")
+                except (PermissionError, FileNotFoundError, OSError) as e:
+                    logger.error(f"Error reading {p} for index: {e}")
+                    # Skip files that cannot be read
+                    continue
+        
+        index_content = "\n".join(sections)
+        (self.wiki_dir / "index.md").write_text(index_content.strip() + "\n", encoding="utf-8")
+        
+        # --- サブディレクトリの index.md 生成 ---
+        for d in subdirs:
+            self._generate_subdir_index(d)
+    
+    def _get_description(self, file_path: Path) -> str:
+        """ファイルの frontmatter から description を取得する。"""
+        # ファイルの読み込み自体でエラー（PermissionError等）が発生した場合は、呼び出し元で処理するために伝播させる
+        content = file_path.read_text(encoding="utf-8")
+        try:
+            data, _ = parse_frontmatter(content)
+            if data:
+                desc = data.get("description", data.get("abstract", ""))
+                if desc:
+                    # 1行に切り詰め（80文字以内）
+                    first_line = desc.split("\n")[0].strip()
+                    return first_line[:80] + "..." if len(first_line) > 80 else first_line
+        except Exception:
+            pass
+        return ""
+    
+    def _generate_subdir_index(self, dir_path: Path):
+        """OKF §6 準拠のサブディレクトリ index.md を生成する。"""
+        reserved_files = {"index.md", "log.md"}
+        pages = sorted([p for p in dir_path.glob("*.md") if p.name not in reserved_files])
+        sub_dirs = sorted([d for d in dir_path.iterdir() if d.is_dir() and not d.name.startswith(".")])
+        
+        dir_name = dir_path.name.capitalize()
+        sections = [f"# {dir_name}"]
+        
+        if sub_dirs:
+            sections.append("")
+            for sd in sub_dirs:
+                sections.append(f"* [{sd.name}]({sd.name}/index.md)")
+        
+        if pages:
+            sections.append("")
+            for p in pages:
+                try:
+                    desc = self._get_description(p)
+                    entry = f"* [{p.stem}]({p.name})"
+                    if desc:
+                        entry += f" - {desc}"
+                    sections.append(entry)
+                except (PermissionError, FileNotFoundError, OSError) as e:
+                    logger.error(f"Error reading {p} for subdir index: {e}")
+                    continue
+        
+        index_content = "\n".join(sections)
+        (dir_path / "index.md").write_text(index_content.strip() + "\n", encoding="utf-8")
