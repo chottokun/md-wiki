@@ -40,7 +40,7 @@ class WikiQueryEngine:
         seen_sources = {d.metadata.get("source") for d in initial_docs}
         
         for d in initial_docs:
-            if d.metadata.get("type") == "wiki_page":
+            if d.metadata.get("type") in ["wiki_page", "Concept", "Article", "Source", "Reference", "Landscape"]:
                 # リンクの抽出 (Markdownエスケープを考慮)
                 content = d.page_content.replace("\\", "")
                 links = WIKI_LINK_RE.findall(content)

@@ -28,7 +28,7 @@ sequenceDiagram
     participant E as WikiQueryEngine
     participant Q as Qdrant
     participant F as ファイルシステム
-    participant L as LLM (Ollama/OpenAI)
+    participant L as LLM (Ollama/OpenAI/Gemini)
 
     U->>E: 質問 (Query)
     E->>Q: ハイブリッド検索実行

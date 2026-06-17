@@ -25,7 +25,7 @@ graph TD
 
 ### B. Wikiレイヤー (Compiled Wiki)
 - **内容**: AIが要約・統合し、人間がレビュー・承認した構造化Markdown。
-- **役割**: 概念間の繋がり、全体像、および「人間の考察」を保持します。ドキュメント全体の要約（Abstract）や関連概念（Concepts）をメタデータとして含みます。
+- **役割**: 概念間の繋がり、全体像、および「人間の考察」を保持します。ドキュメント全体の概要（description）や関連概念（Concepts）をメタデータとして含みます。
 
 ---
 
@@ -43,7 +43,7 @@ graph TD
 
 自由記述のMarkdownでありながら、**Pydanticによる厳格なデータバリデーション**を備えている点が本システムの信頼性の根幹です。
 
-- **Schema Enforcement**: `core/schemas.py` で定義された `WikiFrontmatterSchema` が、全ページのYAMLメタデータの構造（tags, aliases, abstract等）を強制します。
+- **Schema Enforcement**: `core/schemas.py` で定義された `WikiFrontmatterSchema` が、全ページのYAMLメタデータの構造（tags, aliases, description等）を強制します。
 - **Quality Control**: バリデータにより、「自動生成スタブ」や「要約なし」といった無意味なプレースホルダーを自動的に検知・排除します。
 - **Normalization**: `normalize_term` ロジックにより、全角半角の統一、スペースのアンダースコア化、特殊ハイフンの正規化を一貫して行い、リンク切れを防ぎます。
 
