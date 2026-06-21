@@ -2,10 +2,7 @@ import unittest
 from unittest.mock import MagicMock
 import sys
 
-# Mock missing dependencies before importing agent.state
-mock_langchain = MagicMock()
-sys.modules["langchain_core"] = mock_langchain
-sys.modules["langchain_core.documents"] = mock_langchain
+
 
 from agent.state import merge_list
 

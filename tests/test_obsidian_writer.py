@@ -45,7 +45,7 @@ def test_create_draft_update_existing(temp_wiki):
     assert "未審査" in data["tags"]
     
     # 差分セクションが含まれているか
-    assert "> [!info] AIからの更新提案" in full_text
+    assert "> [!caution] AIによる更新提案 (Merge Diff)" in full_text
     assert "Old Content" in full_text # 差分の中にあるはず
     assert "# New Content" in body
 
