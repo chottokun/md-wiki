@@ -1,7 +1,6 @@
 import os
 import sys
 import argparse
-import re
 import yaml
 
 def parse_args():
