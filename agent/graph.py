@@ -1,6 +1,7 @@
 import logging
 import re
 import json
+import concurrent.futures
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Set
 from langgraph.graph import StateGraph, START, END
@@ -87,8 +88,6 @@ def ingest_node(state: AgentState) -> Dict[str, Any]:
         "retrieved_docs": retrieved,
         "status": "ingested"
     }
-
-import concurrent.futures
 
 def _process_page_for_red_links(p: Path, existing_normalized_names: Set[str]) -> Set[str]:
     """1つのファイルから赤リンクを抽出する内部関数。"""
@@ -233,18 +232,32 @@ def lint_node(state: AgentState) -> Dict[str, Any]:
     # 重複を避けるために現在の concepts フォルダの中身も考慮
     existing_concepts = {p.stem for p in (writer.wiki_dir / "concepts").glob("*.md")}
     
-    count = 0
+    # 処理対象の用語を最大50個まで抽出
+    targets = []
     for term in sorted(list(red_links)):
-        if normalize_term(term) in existing_concepts: continue
-        
-        logger.info(f"🔍 Generating stub for: {term}")
-        context, sources, source_links = _fetch_context(term, llm)
-        data = _generate_stub_data(term, context, source_links, [], llm)
-        
-        # スタブ作成
-        writer.create_draft_from_schema(data, sub_dir="concepts")
-        count += 1
-        if count >= 50: break # 1回につき最大50個まで
+        if normalize_term(term) not in existing_concepts:
+            targets.append(term)
+        if len(targets) >= 50:
+            break
+
+    if not targets:
+        return {"status": "linted"}
+
+    def _process_term(term):
+        try:
+            logger.info(f"🔍 Generating stub for: {term}")
+            context, sources, source_links = _fetch_context(term, llm)
+            data = _generate_stub_data(term, context, source_links, [], llm)
+            # スタブ作成
+            writer.create_draft_from_schema(data, sub_dir="concepts")
+            return True
+        except Exception as e:
+            logger.error(f"Error generating stub for {term}: {e}")
+            return False
+
+    # スレッドプールを使用して並列処理 (I/OバウンドなLLM/Qdrant呼び出しを高速化)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        list(executor.map(_process_term, targets))
     
     return {"status": "linted"}
 
