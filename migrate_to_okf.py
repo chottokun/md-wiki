@@ -50,23 +50,28 @@ def migrate_frontmatter_and_content(file_path: Path, wiki_root: Path, dry_run: b
     if not current_type or current_type in ["wiki", "Article", "Concept", "RawSource", "Reference", "Source"]:
         data["type"] = inferred_type
 
-    # 2. Field renames
-    # abstract -> description
+    # 2. Field renames & formatting
+    # abstract -> description (Note: parse_frontmatter already does this, but we ensure formatting here)
     if "abstract" in data and "description" not in data:
         data["description"] = data.pop("abstract")
+
     # updated -> timestamp (ISO 8601)
-    if "updated" in data and "timestamp" not in data:
-        updated_val = data.pop("updated")
+    # Note: parse_frontmatter might have already renamed 'updated' to 'timestamp'
+    ts_val = data.get("timestamp") or data.get("updated")
+    if ts_val and isinstance(ts_val, str):
         # try to parse old YYYY-MM-DD HH:mm or similar
         try:
-            dt = datetime.strptime(updated_val.strip(), "%Y-%m-%d %H:%M")
+            dt = datetime.strptime(ts_val.strip(), "%Y-%m-%d %H:%M")
             data["timestamp"] = dt.strftime("%Y-%m-%dT%H:%M:%S+09:00")
+            data.pop("updated", None)
         except Exception:
             try:
-                dt = datetime.strptime(updated_val.strip(), "%Y-%m-%d")
+                dt = datetime.strptime(ts_val.strip(), "%Y-%m-%d")
                 data["timestamp"] = dt.strftime("%Y-%m-%dT00:00:00+09:00")
+                data.pop("updated", None)
             except Exception:
-                data["timestamp"] = updated_val
+                if "updated" in data and "timestamp" not in data:
+                    data["timestamp"] = data.pop("updated")
     
     # created -> ISO 8601
     if "created" in data:
