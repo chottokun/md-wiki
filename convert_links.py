@@ -4,7 +4,6 @@ import re
 import argparse
 import shutil
 from pathlib import Path
-import yaml
 from core.utils import parse_frontmatter, normalize_term
 
 def parse_args():
