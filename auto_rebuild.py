@@ -72,6 +72,14 @@ def auto_rebuild():
     # 4. インフラとリポジトリの確認
     mode = os.getenv("QDRANT_MODE", "local")
     print(f"現在のモード: {mode}")
+
+    # Ollamaコンテナの再起動 (ローカルモード時のみ)
+    if mode == "local":
+        print("Ollamaコンテナを再起動中...")
+        try:
+            subprocess.run(["docker", "restart", "ollama"], check=True, capture_output=True)
+        except Exception as e:
+            print(f"  ⚠ Warning: Ollamaの再起動に失敗しました (Dockerが未設定の可能性があります): {e}")
     
     if not (wiki_dir / ".git").exists():
         print("WikiディレクトリをGitリポジトリとして初期化中...")
