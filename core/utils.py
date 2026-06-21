@@ -1,6 +1,8 @@
+import concurrent.futures
 import re
 import unicodedata
 import uuid
+from collections import Counter
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 from ruamel.yaml import YAML
@@ -250,7 +252,7 @@ def parse_and_filter_concepts(raw_llm_output: str) -> List[str]:
 
 TECHNICAL_STOPWORDS = {
     "カント", "うつ病", "フィードバック", "ジャーナリング", "スコアリング", 
-    "タイトル", "要約", "概要", "詳細", "目次", "参考文献", "謝辞",
+    "タイトル", "要約", "概要", "詳細", "目次", "参考文献", "謝辞", "home",
     "background", "summary", "abstract", "title", "conclusion", "references",
     "introduction", "method", "results", "discussion", "future_work",
     "human", "people", "user", "study", "research", "paper", "article"
@@ -308,3 +310,48 @@ def _extract_balanced_json(text: str) -> Optional[str]:
                 return text[start:i+1]
                 
     return None
+
+def find_red_links(wiki_dir: Path) -> Counter:
+    """
+    Wikiディレクトリを走査し、実体のないリンク（赤リンク）とその出現回数を集計する。
+    並列処理により高速化されている。
+    """
+    # 予約ディレクトリとファイルをパスパーツで除外
+    all_pages = list(wiki_dir.rglob("*.md"))
+    pages = [
+        p for p in all_pages
+        if "raw_markdown" not in p.parts
+        and "sources" not in p.parts
+        and ".obsidian" not in p.parts
+        and p.name != "Management Dashboard.md"
+    ]
+
+    existing_normalized_names = {normalize_term(p.stem) for p in pages}
+    red_links_counter = Counter()
+
+    def process_page(p: Path) -> Counter:
+        local_counter = Counter()
+        try:
+            content = p.read_text(encoding="utf-8")
+            links = WIKI_LINK_RE.findall(content)
+            for term in links:
+                term = term.strip().strip("[]")
+                if not term or "/" in term or "\\" in term: continue
+                if term.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg', '.gif')): continue
+                if ":" in term: continue
+
+                norm_term = normalize_term(term)
+                if not is_technical_term(term) or not is_technical_term(norm_term): continue
+
+                if norm_term not in existing_normalized_names:
+                    local_counter[term] += 1
+        except Exception:
+            pass
+        return local_counter
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(process_page, p) for p in pages]
+        for future in concurrent.futures.as_completed(futures):
+            red_links_counter.update(future.result())
+
+    return red_links_counter
