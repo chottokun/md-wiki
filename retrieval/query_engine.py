@@ -6,6 +6,7 @@ from typing import List, Optional
 
 from langchain_core.documents import Document
 
+from core.config import Config
 from core.llm_router import LLMLayer
 from core.prompts import get_query_prompt
 from core.utils import WIKI_LINK_RE, safe_get_content
@@ -28,6 +29,9 @@ class WikiQueryEngine:
         self.qdrant_store = qdrant_store
         self.router = router
         self.wiki_dir = wiki_dir if wiki_dir else Config.WIKI_DIR
+        # インスタンス変数としてキャッシュをバインドすることで、
+        # クラスレベルの lru_cache による参照サイクル（メモリリーク）を防ぐ
+        self._find_link_path = lru_cache(maxsize=1024)(self._find_link_path)
 
     def query(self, query_text: str, k: int = 8) -> str:
         """
@@ -90,7 +94,6 @@ class WikiQueryEngine:
                 logger.error(f"Error reading linked file {link_path}: {e}")
         return None
 
-    @lru_cache(maxsize=1024)
     def _find_link_path(self, link: str) -> Optional[Path]:
         """
         指定されたリンク名に対応するMarkdownファイルをWikiディレクトリ内で検索する。
