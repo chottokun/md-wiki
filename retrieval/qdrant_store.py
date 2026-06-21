@@ -186,13 +186,20 @@ class QdrantHybridStore:
         logger.info("全件同期が完了しました。")
 
     def delete_source(self, source_name: str):
+        self.delete_sources([source_name])
+
+    def delete_sources(self, source_names: List[str]):
+        """複数のソースをまとめて削除する。"""
+        if not source_names:
+            return
+
         self.client.delete(
             collection_name=self.collection_name,
             points_selector=rest_models.Filter(
                 must=[
                     rest_models.FieldCondition(
                         key="metadata.source",
-                        match=rest_models.MatchValue(value=source_name),
+                        match=rest_models.MatchAny(any=source_names),
                     )
                 ]
             ),

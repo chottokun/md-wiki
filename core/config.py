@@ -14,7 +14,8 @@ class Config:
     
     # Sync configuration
     INCLUDE_UNREVIEWED: bool = os.getenv("INCLUDE_UNREVIEWED", "false").lower() == "true"
-    
+    INCREMENTAL_SYNC_BATCH_SIZE: int = int(os.getenv("INCREMENTAL_SYNC_BATCH_SIZE", "50"))
+
     # Models cache directory
     MODELS_CACHE_DIR: Path = Path(os.getenv("MODELS_CACHE_DIR", ".cache"))
     

@@ -1,7 +1,9 @@
 import logging
 from pathlib import Path
 from typing import List, Tuple, Set, Optional
+from concurrent.futures import ThreadPoolExecutor
 import git
+from langchain_core.documents import Document
 from retrieval.qdrant_store import QdrantHybridStore
 from core.config import Config
 
@@ -100,29 +102,52 @@ class GitSyncManager:
             return
 
         logger.info(f"{len(changed_files)} 件の変更を検出しました。同期を開始します。")
-        
-        for file_path in changed_files:
-            # 未審査タグのチェック
-            content = file_path.read_text(encoding="utf-8")
-            if not include_unreviewed:
-                if "未審査" in content or "#未審査" in content:
-                    logger.info(f"  [Skip] {file_path.name} (未審査タグあり)")
-                    continue
 
-            # Qdrantへの登録
-            source_name = file_path.stem
-            # 既存の同一ソースを一旦削除（更新のため）
-            self.store.delete_source(source_name)
+        def _prepare_update(file_path: Path) -> Optional[Tuple[str, str, str, dict]]:
+            """ファイルを読み込み、タグチェックを行い、更新情報を準備する。"""
+            try:
+                content = file_path.read_text(encoding="utf-8")
+                if not include_unreviewed:
+                    if "未審査" in content or "#未審査" in content:
+                        return None
+
+                source_name = file_path.stem
+                is_raw = "raw_markdown" in str(file_path)
+                if is_raw:
+                    source = source_name.replace("_raw", "") + ".pdf"
+                    metadata = {"source": source, "type": "raw_source"}
+                else:
+                    metadata = {"source": source_name, "type": "wiki_page"}
+
+                return (source_name, content, file_path.name, metadata)
+            except Exception as e:
+                logger.error(f"Error reading file {file_path}: {e}")
+                return None
+
+        # 並列でファイルを読み込み、チェックを行う
+        with ThreadPoolExecutor() as executor:
+            update_data_list = list(filter(None, executor.map(_prepare_update, changed_files)))
+
+        # バッチ処理
+        batch_size = Config.INCREMENTAL_SYNC_BATCH_SIZE
+        for i in range(0, len(update_data_list), batch_size):
+            batch = update_data_list[i : i + batch_size]
+
+            # 1. バッチで既存のソースを削除
+            source_names_to_delete = [data[0] for data in batch]
+            self.store.delete_sources(source_names_to_delete)
+
+            # 2. バッチで新しいドキュメントを作成
+            all_documents: List[Document] = []
+            for _, content, _, metadata in batch:
+                all_documents.extend(self.store.get_chunks(content, metadata))
             
-            # メタデータの判定
-            is_raw = "raw_markdown" in str(file_path)
-            if is_raw:
-                pdf_name = source_name.replace("_raw", "") + ".pdf"
-                self.store.add_text(content, {"source": pdf_name, "type": "raw_source"})
-            else:
-                self.store.add_text(content, {"source": source_name, "type": "wiki_page"})
+            # 3. まとめて登録
+            if all_documents:
+                self.store.add_documents(all_documents)
             
-            logger.info(f"  [Sync] {file_path.name} を更新しました。")
+            for _, _, filename, _ in batch:
+                logger.info(f"  [Sync] {filename} を更新しました。")
 
         # 同期状態を更新
         current_head = self._get_current_head()
