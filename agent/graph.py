@@ -31,7 +31,8 @@ from core.prompts import (
     get_fallback_prompt,
     get_translation_prompt,
     get_refine_prompt,
-    get_draft_body_prompt
+    get_draft_body_prompt,
+    get_synthesis_prompt
 )
 
 logger = logging.getLogger(__name__)
@@ -454,6 +455,81 @@ def review_node(state: AgentState) -> Dict[str, Any]:
     
     return {"target_page": target, "proposed_content": content, "status": "reviewed"}
 
+def synthesis_node(state: AgentState) -> Dict[str, Any]:
+    """メンテナンス対象のトピックについて、関連情報を統合してWiki記事を生成。"""
+    logger.info("🧠 SYNTHESIS_NODE STARTED 🧠")
+    llm = router.get_model(LLMLayer.L2)
+    topic = state['maintenance_topic']
+
+    # 関連情報の検索
+    store = get_qdrant_store()
+    retrieved = store.search(topic, k=15)
+    context = "\n\n".join([f"Source: {d.metadata.get('source')}\n{d.page_content}" for d in retrieved])
+
+    # コンテンツ生成
+    synthesis_prompt = get_synthesis_prompt(topic, context)
+    body_text = safe_get_content(llm.invoke(synthesis_prompt).content)
+    _, clean_body = parse_frontmatter(body_text)
+    if not clean_body.strip(): clean_body = body_text
+
+    # メタデータ抽出
+    metadata_prompt = get_metadata_prompt(clean_body, topic)
+    try:
+        metadata = None
+        try:
+            metadata_llm = llm.with_structured_output(WikiMetadataSchema)
+            metadata = metadata_llm.invoke(metadata_prompt)
+        except Exception as se:
+            logger.warning(f"Structured output failed in synthesis_node: {se}. Trying manual JSON extraction.")
+            raw_res = safe_get_content(llm.invoke(metadata_prompt).content)
+            json_str = extract_json_from_text(raw_res)
+            if json_str:
+                metadata = WikiMetadataSchema(**json.loads(json_str))
+
+        if not metadata: raise ValueError("Could not extract metadata as JSON")
+
+        global_concepts = get_all_concepts()
+        all_targets = list(set(metadata.concepts + global_concepts))
+        final_body = auto_link_concepts(clean_body, all_targets)
+
+        proposed_data = {
+            "title": normalize_term(metadata.title.strip().replace("[[", "").replace("]]", "")),
+            "abstract": metadata.description,
+            "concepts": metadata.concepts,
+            "body": final_body,
+            "tags": metadata.tags + ["maintenance"],
+            "aliases": metadata.aliases or []
+        }
+    except Exception as e:
+        logger.warning(f"Metadata extraction failed in synthesis_node: {e}")
+        proposed_data = {
+            "title": normalize_term(topic),
+            "abstract": "自動生成された統合記事（メタデータ抽出失敗）",
+            "concepts": [],
+            "body": clean_body,
+            "tags": ["maintenance", "auto-generated"],
+            "aliases": []
+        }
+
+    # proposed_content を組み立てる
+    metadata_fm = {
+        "type": "Article",
+        "tags": proposed_data.get("tags", []),
+        "aliases": proposed_data.get("aliases", []),
+        "concepts": proposed_data.get("concepts", []),
+        "description": proposed_data.get("abstract", "")
+    }
+    concepts_str = "\n".join([f"- {c}" for c in proposed_data.get("concepts", [])])
+    final_body_md = f"# {proposed_data['title']}\n\n> [!abstract] 要約\n> {proposed_data['abstract']}\n\n{proposed_data['body']}\n\n## 💡 主要な概念\n{concepts_str}"
+    proposed_content = f"{dump_frontmatter(metadata_fm)}\n\n{final_body_md.strip()}"
+
+    return {
+        "proposed_data": proposed_data,
+        "proposed_content": proposed_content,
+        "target_page": proposed_data["title"],
+        "status": "synthesized"
+    }
+
 # グラフ構成
 workflow = StateGraph(AgentState)
 
@@ -462,6 +538,7 @@ workflow.add_node("lint", lint_node)
 workflow.add_node("draft", draft_node)
 workflow.add_node("refine", refine_node)
 workflow.add_node("conflict", conflict_node)
+workflow.add_node("synthesis", synthesis_node)
 workflow.add_node("review", review_node)
 
 # 条件付き遷移や他のエントリーポイント
@@ -473,6 +550,8 @@ def route_lint(state: AgentState):
     return "review"
 
 def route_start(state: AgentState):
+    if state.get("maintenance_topic"):
+        return "synthesis"
     if state.get("status") == "starting_refine":
         return "refine"
     if state.get("status") == "starting_conflict":
@@ -487,6 +566,7 @@ workflow.add_edge("draft", "lint")
 workflow.add_conditional_edges("lint", route_lint, {"review": "review", END: END})
 workflow.add_edge("refine", "review")
 workflow.add_edge("conflict", "review")
+workflow.add_edge("synthesis", "review")
 workflow.add_edge("review", END)
 
 app = workflow.compile(checkpointer=MemorySaver(), interrupt_before=["review"])

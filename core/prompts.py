@@ -154,3 +154,19 @@ def get_query_prompt(query: str, context: str, lang_inst: str) -> list:
         ("user", f"<context>\n{context}\n</context>\n\n<query>\n{query}\n</query>")
     ]
 
+
+def get_synthesis_prompt(topic: str, context: str) -> list:
+    topic = _escape_xml(topic)
+    context = _escape_xml(context)
+    return [
+        ("system", f"{SECURITY_INSTRUCTION}\n\n"
+                   "あなたは高度なナレッジマネージャーです。指定されたトピックについて、複数のソースから得られた情報を統合し、包括的なWiki記事を執筆してください。\n"
+                   f"トピック: {topic}\n"
+                   "【執筆指針】\n"
+                   "1. 複数の事実を論理的に整理し、矛盾がある場合は併記してください。\n"
+                   "2. 既存のWiki記事がある場合は、その文脈を尊重しつつ、新情報を統合してください。\n"
+                   "3. 専門用語には積極的に [[用語名]] でリンクを付与してください。\n"
+                   "4. 出力は Markdown 本文のみとし、YAMLフロントマターは含めないでください。\n"
+                   "- 関連情報は <context> タグ内にあります。"),
+        ("user", f"<context>\n{context}\n</context>")
+    ]
