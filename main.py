@@ -22,7 +22,7 @@ if sys.platform == "win32":
         sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 from agent.graph import app, get_qdrant_store
-from core.llm_router import router, LLMLayer
+from core.llm_router import router
 from retrieval.query_engine import WikiQueryEngine
 from core.config import Config
 from core.git_utils import run_git_commit

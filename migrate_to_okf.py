@@ -5,7 +5,7 @@ import shutil
 import argparse
 from pathlib import Path
 from datetime import datetime
-from core.utils import parse_frontmatter, dump_frontmatter, normalize_term
+from core.utils import parse_frontmatter, dump_frontmatter
 from core.schemas import WikiFrontmatterSchema
 
 def setup_argparse():
