@@ -90,5 +90,33 @@ More content?
 
         self.assertEqual(file_path.read_text(encoding="utf-8"), content)
 
+    def test_no_frontmatter(self):
+        file_path = self.wiki_root / "no_fm.md"
+        content = "# No Frontmatter\nJust body"
+        file_path.write_text(content, encoding="utf-8")
+
+        migrate_frontmatter_and_content(file_path, self.wiki_root, dry_run=False)
+
+        new_content = file_path.read_text(encoding="utf-8")
+        self.assertTrue(new_content.startswith("---"))
+        data, body = parse_frontmatter(new_content)
+        self.assertEqual(data["type"], "Article")
+        self.assertEqual(data["title"], "No Frontmatter")
+
+    def test_iso_date_handling(self):
+        file_path = self.wiki_root / "dates.md"
+        content = """---
+updated: "2023-10-27"
+created: "2023-01-01 12:00"
+---
+# Dates"""
+        file_path.write_text(content, encoding="utf-8")
+
+        migrate_frontmatter_and_content(file_path, self.wiki_root, dry_run=False)
+
+        data, _ = parse_frontmatter(file_path.read_text(encoding="utf-8"))
+        self.assertEqual(data["timestamp"], "2023-10-27T00:00:00+09:00")
+        self.assertEqual(data["created"], "2023-01-01T12:00:00+09:00")
+
 if __name__ == "__main__":
     unittest.main()
