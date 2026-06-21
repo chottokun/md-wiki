@@ -1,9 +1,12 @@
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import lru_cache
 from pathlib import Path
 from typing import List, Optional
+
 from langchain_core.documents import Document
+
 from core.llm_router import LLMLayer
-from core.config import Config
 from core.prompts import get_query_prompt
 from core.utils import WIKI_LINK_RE, safe_get_content
 
@@ -39,23 +42,25 @@ class WikiQueryEngine:
         all_context_docs = list(initial_docs)
         seen_sources = {d.metadata.get("source") for d in initial_docs}
         
+        # 追跡対象のリンクを収集
+        links_to_fetch = set()
         for d in initial_docs:
             if d.metadata.get("type") in ["wiki_page", "Concept", "Article", "Source", "Reference", "Landscape"]:
-                # リンクの抽出 (Markdownエスケープを考慮)
                 content = d.page_content.replace("\\", "")
                 links = WIKI_LINK_RE.findall(content)
                 for link in links:
                     if link not in seen_sources:
-                        link_path = self._find_link_path(link)
-                        if link_path:
-                            logger.info(f"リンク追跡: [[{link}]] ({link_path}) を追加の文脈として読み込みます。")
-                            linked_content = link_path.read_text(encoding="utf-8")
-                            all_context_docs.append(Document(
-                                page_content=linked_content,
-                                metadata={"source": link, "type": "explicit_link"}
-                            ))
-                            seen_sources.add(link)
+                        links_to_fetch.add(link)
         
+        # 並列でリンク先コンテンツを取得
+        if links_to_fetch:
+            with ThreadPoolExecutor() as executor:
+                future_to_link = {executor.submit(self._fetch_link_content, link): link for link in links_to_fetch}
+                for future in as_completed(future_to_link):
+                    doc = future.result()
+                    if doc:
+                        all_context_docs.append(doc)
+
         # 3. コンテキストの構造化
         context = self._build_context_string(all_context_docs)
         
@@ -68,10 +73,28 @@ class WikiQueryEngine:
         
         return safe_get_content(response.content)
 
+    def _fetch_link_content(self, link: str) -> Optional[Document]:
+        """
+        リンク先のコンテンツを取得し、Documentオブジェクトとして返す。
+        """
+        link_path = self._find_link_path(link)
+        if link_path:
+            try:
+                logger.info(f"リンク追跡: [[{link}]] ({link_path}) を追加の文脈として読み込みます。")
+                linked_content = link_path.read_text(encoding="utf-8")
+                return Document(
+                    page_content=linked_content,
+                    metadata={"source": link, "type": "explicit_link"}
+                )
+            except Exception as e:
+                logger.error(f"Error reading linked file {link_path}: {e}")
+        return None
+
+    @lru_cache(maxsize=1024)
     def _find_link_path(self, link: str) -> Optional[Path]:
         """
         指定されたリンク名に対応するMarkdownファイルをWikiディレクトリ内で検索する。
-        サブディレクトリも再帰的に探索する。
+        サブディレクトリも再帰的に探索する。キャッシュにより再検索を高速化する。
         """
         # 1. 直下をまず探す (高速化のため)
         direct_path = self.wiki_dir / f"{link}.md"
