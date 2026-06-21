@@ -1,6 +1,13 @@
 import pytest
 from pathlib import Path
-from core.utils import normalize_term, parse_frontmatter, dump_frontmatter, extract_json_from_text, safe_get_content
+from core.utils import (
+    normalize_term,
+    parse_frontmatter,
+    dump_frontmatter,
+    extract_json_from_text,
+    safe_get_content,
+    is_technical_term
+)
 from output.obsidian_writer import ObsidianWriter
 from core.schemas import DraftConfig
 
@@ -167,3 +174,33 @@ def test_safe_get_content():
     # List of mixed string and dicts
     assert safe_get_content(["start ", {"text": "middle"}, " end"]) == "start middle end"
 
+def test_is_technical_term():
+    # 空またはNone
+    assert is_technical_term("") is False
+    assert is_technical_term(None) is False
+
+    # ストップワード (TECHNICAL_STOPWORDS)
+    assert is_technical_term("summary") is False
+    assert is_technical_term("SUMMARY") is False  # 小文字化されるため
+    assert is_technical_term("  abstract  ") is False # トリムされるため
+    assert is_technical_term("参考文献") is False
+
+    # 短すぎる
+    assert is_technical_term("a") is False
+    assert is_technical_term("あ") is False
+
+    # 数値
+    assert is_technical_term("123") is False
+
+    # 特殊記号のみ、または特定のパターン (re.match(r'^[0-9\.\-\(\)\s]+$', norm))
+    assert is_technical_term("1.2-3") is False
+    assert is_technical_term("---") is False
+    assert is_technical_term("( )") is False
+    assert is_technical_term("12.34") is False
+
+    # 有効な技術用語
+    assert is_technical_term("RAG") is True
+    assert is_technical_term("Transformer") is True
+    assert is_technical_term("Large Language Model") is True
+    assert is_technical_term("量子化") is True
+    assert is_technical_term("BERT") is True
