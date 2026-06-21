@@ -2,7 +2,7 @@ import logging
 import re
 import json
 from pathlib import Path
-from typing import Optional, Dict, Any, List, Set
+from typing import Dict, Any, Set
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -23,7 +23,7 @@ from core.utils import (
 from ingestion.docling_parser import DoclingParser
 from retrieval.qdrant_store import QdrantHybridStore
 from output.obsidian_writer import ObsidianWriter
-from core.schemas import WikiPageSchema, WikiMetadataSchema, UpdateDecisionSchema, DraftConfig
+from core.schemas import WikiMetadataSchema, DraftConfig
 from core.prompts import (
     get_ingest_prompt,
     get_lint_body_prompt,
