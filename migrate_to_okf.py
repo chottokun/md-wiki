@@ -5,7 +5,8 @@ import shutil
 import argparse
 from pathlib import Path
 from datetime import datetime
-from core.utils import parse_frontmatter, dump_frontmatter
+from typing import Dict, Any, Optional
+from core.utils import parse_frontmatter, dump_frontmatter, normalize_term
 from core.schemas import WikiFrontmatterSchema
 
 def setup_argparse():
@@ -22,19 +23,8 @@ def backup_wiki(wiki_dir: Path):
     shutil.make_archive(backup_name, 'zip', wiki_dir)
     print(f"✅ Created backup archive: {backup_name}.zip")
 
-def migrate_frontmatter_and_content(file_path: Path, wiki_root: Path, dry_run: bool):
-    try:
-        content = file_path.read_text(encoding="utf-8")
-    except Exception as e:
-        print(f"❌ Error reading {file_path}: {e}")
-        return
-
-    data, body = parse_frontmatter(content)
-    if data is None:
-        # No frontmatter, construct a default one
-        data = {}
-
-    # 1. Determine type based on directory path
+def _infer_type(file_path: Path, wiki_root: Path, current_type: Optional[str]) -> str:
+    """Determine type based on directory path."""
     rel_parts = file_path.relative_to(wiki_root).parent.parts
     inferred_type = "Article"
     if "concepts" in rel_parts:
@@ -46,42 +36,28 @@ def migrate_frontmatter_and_content(file_path: Path, wiki_root: Path, dry_run: b
     elif "sources" in rel_parts:
         inferred_type = "Source"
     
-    current_type = data.get("type")
     if not current_type or current_type in ["wiki", "Article", "Concept", "RawSource", "Reference", "Source"]:
-        data["type"] = inferred_type
+        return inferred_type
+    return current_type
 
-    # 2. Field renames
-    # abstract -> description
-    if "abstract" in data and "description" not in data:
-        data["description"] = data.pop("abstract")
-    # updated -> timestamp (ISO 8601)
-    if "updated" in data and "timestamp" not in data:
-        updated_val = data.pop("updated")
-        # try to parse old YYYY-MM-DD HH:mm or similar
-        try:
-            dt = datetime.strptime(updated_val.strip(), "%Y-%m-%d %H:%M")
-            data["timestamp"] = dt.strftime("%Y-%m-%dT%H:%M:%S+09:00")
-        except Exception:
-            try:
-                dt = datetime.strptime(updated_val.strip(), "%Y-%m-%d")
-                data["timestamp"] = dt.strftime("%Y-%m-%dT00:00:00+09:00")
-            except Exception:
-                data["timestamp"] = updated_val
-    
-    # created -> ISO 8601
-    if "created" in data:
-        created_val = data["created"]
-        try:
-            dt = datetime.strptime(created_val.strip(), "%Y-%m-%d %H:%M")
-            data["created"] = dt.strftime("%Y-%m-%dT%H:%M:%S+09:00")
-        except Exception:
-            try:
-                dt = datetime.strptime(created_val.strip(), "%Y-%m-%d")
-                data["created"] = dt.strftime("%Y-%m-%dT00:00:00+09:00")
-            except Exception:
-                pass
+def _format_iso_datetime(date_val: Any) -> str:
+    """Try to parse old YYYY-MM-DD HH:mm or similar to ISO 8601."""
+    if not isinstance(date_val, str):
+        return str(date_val)
 
-    # 3. Ensure title
+    date_str = date_val.strip()
+    try:
+        dt = datetime.strptime(date_str, "%Y-%m-%d %H:%M")
+        return dt.strftime("%Y-%m-%dT%H:%M:%S+09:00")
+    except Exception:
+        try:
+            dt = datetime.strptime(date_str, "%Y-%m-%d")
+            return dt.strftime("%Y-%m-%dT00:00:00+09:00")
+        except Exception:
+            return date_str
+
+def _ensure_title(data: Dict[str, Any], body: str, file_path: Path) -> None:
+    """Ensure title exists in frontmatter, extracting from H1 or filename if necessary."""
     if "title" not in data or not data["title"]:
         # Try to find H1 in body
         h1_match = re.search(r"^#\s+(.+)$", body, re.MULTILINE)
@@ -90,8 +66,8 @@ def migrate_frontmatter_and_content(file_path: Path, wiki_root: Path, dry_run: b
         else:
             data["title"] = file_path.stem
 
-    # 4. Migrate '## 🔗 関連リンク' -> '# Citations'
-    # Use case-insensitive find for sections like ## 🔗 関連リンク or ## 関連リンク
+def _migrate_citation_section(body: str) -> str:
+    """Migrate '## 🔗 関連リンク' etc. to '# Citations' at the end of the body."""
     citation_section_pattern = re.compile(
         r"##\s*(?:🔗\s*)?(?:関連リンク|Citations|引用文献)\n(.*?)(?=\n##|\n#|$)", 
         re.DOTALL | re.IGNORECASE
@@ -103,9 +79,42 @@ def migrate_frontmatter_and_content(file_path: Path, wiki_root: Path, dry_run: b
         # Remove the old section
         body = citation_section_pattern.sub("", body).strip()
         # Add OKF # Citations section at the end of the body
-        # Clean double blank lines
         body = body.rstrip()
         body += f"\n\n# Citations\n{links_content}"
+    return body
+
+def migrate_frontmatter_and_content(file_path: Path, wiki_root: Path, dry_run: bool):
+    """Migrate a single wiki file to OKF standard."""
+    try:
+        content = file_path.read_text(encoding="utf-8")
+    except Exception as e:
+        print(f"❌ Error reading {file_path}: {e}")
+        return
+
+    data, body = parse_frontmatter(content)
+    if data is None:
+        data = {}
+
+    # 1. Determine type
+    data["type"] = _infer_type(file_path, wiki_root, data.get("type"))
+
+    # 2. Field renames (Already partially handled by parse_frontmatter, but we ensure ISO format here)
+    # abstract -> description is handled by _migrate_legacy_frontmatter in parse_frontmatter
+
+    # updated -> timestamp (ISO 8601)
+    # parse_frontmatter might have already renamed 'updated' to 'timestamp'
+    if "timestamp" in data:
+        data["timestamp"] = _format_iso_datetime(data["timestamp"])
+
+    # created -> ISO 8601
+    if "created" in data:
+        data["created"] = _format_iso_datetime(data["created"])
+
+    # 3. Ensure title
+    _ensure_title(data, body, file_path)
+
+    # 4. Migrate citation sections
+    body = _migrate_citation_section(body)
 
     # Validate with Schema
     try:
