@@ -1,7 +1,6 @@
 import logging
-import os
 from pathlib import Path
-from typing import List, Tuple, Set, Optional
+from typing import Set, Optional
 import git
 from retrieval.qdrant_store import QdrantHybridStore
 from core.config import Config
