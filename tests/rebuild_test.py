@@ -12,24 +12,10 @@ import time
 import subprocess
 import re
 from pathlib import Path
-from core.utils import parse_frontmatter
+from core.utils import parse_frontmatter, setup_windows_utf8
 
-if sys.platform == "win32":
-    # Windowsのコンソールコードページを UTF-8 (65001) に強制変更
-    import ctypes
-    import os
-    try:
-        ctypes.windll.kernel32.SetConsoleCP(65001)
-        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
-    except Exception:
-        pass
-    # 環境変数でPythonサブプロセスにもUTF-8を強制
-    os.environ["PYTHONUTF8"] = "1"
-    os.environ["PYTHONIOENCODING"] = "utf-8"
-    # 標準出力と標準エラーを UTF-8 に強制
-    if hasattr(sys.stdout, 'reconfigure'):
-        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+# Windowsのコンソールコードページを UTF-8 に設定
+setup_windows_utf8()
 
 
 os.environ["QDRANT_MODE"] = "memory"

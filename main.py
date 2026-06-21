@@ -5,21 +5,10 @@ import argparse
 import os
 from typing import Dict, Any
 
-if sys.platform == "win32":
-    # Windowsのコンソールコードページを UTF-8 (65001) に強制変更
-    import ctypes
-    try:
-        ctypes.windll.kernel32.SetConsoleCP(65001)
-        ctypes.windll.kernel32.SetConsoleOutputCP(65001)
-    except Exception:
-        pass
-    # 環境変数でPythonサブプロセスにもUTF-8を強制
-    os.environ["PYTHONUTF8"] = "1"
-    os.environ["PYTHONIOENCODING"] = "utf-8"
-    # 標準出力と標準エラーを UTF-8 に強制
-    if hasattr(sys.stdout, 'reconfigure'):
-        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+from core.utils import setup_windows_utf8
+
+# Windowsのコンソールコードページを UTF-8 に設定
+setup_windows_utf8()
 
 from agent.graph import app, get_qdrant_store
 from core.llm_router import router, LLMLayer

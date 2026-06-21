@@ -1,4 +1,6 @@
+import os
 import re
+import sys
 import unicodedata
 import uuid
 from pathlib import Path
@@ -288,6 +290,28 @@ def extract_json_from_text(text: str) -> Optional[str]:
         
     # 2. 直接バランスしたブラケットを探す
     return _extract_balanced_json(text)
+
+def setup_windows_utf8():
+    """
+    Windows環境においてコンソールのコードページをUTF-8に設定し、
+    標準入出力およびサブプロセスのエンコーディングを強制する。
+    """
+    if sys.platform == "win32":
+        # Windowsのコンソールコードページを UTF-8 (65001) に強制変更
+        import ctypes
+        try:
+            ctypes.windll.kernel32.SetConsoleCP(65001)
+            ctypes.windll.kernel32.SetConsoleOutputCP(65001)
+        except Exception:
+            pass
+        # 環境変数でPythonサブプロセスにもUTF-8を強制
+        os.environ["PYTHONUTF8"] = "1"
+        os.environ["PYTHONIOENCODING"] = "utf-8"
+        # 標準出力と標準エラーを UTF-8 に強制
+        if hasattr(sys.stdout, 'reconfigure'):
+            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+            sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+
 
 def _extract_balanced_json(text: str) -> Optional[str]:
     """最初に見つかった { から、対応する } までの範囲を抽出する。"""
