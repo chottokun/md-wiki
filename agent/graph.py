@@ -19,7 +19,8 @@ from core.utils import (
     parse_and_filter_concepts,
     extract_json_from_text,
     WIKI_LINK_RE,
-    safe_get_content
+    safe_get_content,
+    find_red_links
 )
 from ingestion.docling_parser import DoclingParser
 from retrieval.qdrant_store import QdrantHybridStore
@@ -90,57 +91,7 @@ def ingest_node(state: AgentState) -> Dict[str, Any]:
         "status": "ingested"
     }
 
-def _process_page_for_red_links(p: Path, existing_normalized_names: Set[str]) -> Set[str]:
-    """1つのファイルから赤リンクを抽出する内部関数。"""
-    red_links = set()
-    try:
-        content = p.read_text(encoding="utf-8")
-        # WIKI_LINK_RE: r"\[\[([^|#\]]+)(?:[|#][^\]]+)?\]\]"
-        # すでにリンクターゲット（エイリアス・アンカー以前）をキャプチャしている
-        links = WIKI_LINK_RE.findall(content)
-        for term in links:
-            term = term.strip().strip("[]")
 
-            # フォルダパス、空文字、Home、画像ファイルなどはスキップ
-            if not term or "/" in term or "\\" in term or term == "Home": continue
-            if term.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg', '.gif')): continue
-            if ":" in term: continue
-
-            norm_term = normalize_term(term)
-            if not is_technical_term(term) or not is_technical_term(norm_term): continue
-            if norm_term not in existing_normalized_names:
-                red_links.add(term)
-    except Exception as e:
-        logger.error(f"Error reading {p}: {e}")
-    return red_links
-
-def _find_red_links(wiki_dir: Path) -> Set[str]:
-    # raw_markdown や sources フォルダを除外した状態でリストアップ
-    all_pages = list(wiki_dir.rglob("*.md"))
-    pages = [p for p in all_pages if "raw_markdown" not in p.parts and "sources" not in p.parts]
-
-    existing_normalized_names = {normalize_term(p.stem) for p in pages}
-    red_links = set()
-
-    # スレッドプールを使用して並列にファイル読み込みとパースを実行
-    # I/Oバウンドな処理のため、並列化による高速化が期待できる
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
-        # 大量のファイルがある場合のオーバーヘッドを抑えるため、チャンク分けして実行
-        chunk_size = 100
-        futures = []
-        for i in range(0, len(pages), chunk_size):
-            chunk = pages[i:i + chunk_size]
-            def process_chunk(chunk_pages):
-                local_set = set()
-                for page in chunk_pages:
-                    local_set.update(_process_page_for_red_links(page, existing_normalized_names))
-                return local_set
-            futures.append(executor.submit(process_chunk, chunk))
-
-        for future in concurrent.futures.as_completed(futures):
-            red_links.update(future.result())
-
-    return red_links
 
 def _fetch_context(term: str, llm) -> tuple[str, list, list]:
     search_query = term
@@ -223,19 +174,22 @@ def _generate_stub_data(term: str, context: str, source_links: list, evidences: 
 
 
 def lint_node(state: AgentState) -> Dict[str, Any]:
-    """孤立した赤リンク（未作成ページ）を特定し、スタブ記事を自動生成する。"""
+    """孤立した赤リンク（未作成ページ）を特定し、言及頻度に基づいてスタブ記事を自動生成する。"""
     logger.info("🛠️ LINT_NODE STARTED 🛠️")
     writer = get_obsidian_writer()
-    red_links = _find_red_links(writer.wiki_dir)
-    if not red_links: return {"status": "linted"}
+    red_links_dict = find_red_links(writer.wiki_dir)
+    if not red_links_dict: return {"status": "linted"}
 
     llm = router.get_model(LLMLayer.L1)
     # 重複を避けるために現在の concepts フォルダの中身も考慮
-    existing_concepts = {p.stem for p in (writer.wiki_dir / "concepts").glob("*.md")}
+    existing_concepts = {normalize_term(p.stem) for p in (writer.wiki_dir / "concepts").glob("*.md")}
+
+    # 言及頻度順（降順）にソート
+    sorted_red_links = sorted(red_links_dict.items(), key=lambda x: x[1], reverse=True)
     
-    # 処理対象の用語を最大50個まで抽出
+    # 処理対象の用語を最大50個まで抽出（言及頻度順にソートされたものから）
     targets = []
-    for term in sorted(list(red_links)):
+    for term, frequency in sorted_red_links:
         if normalize_term(term) not in existing_concepts:
             targets.append(term)
         if len(targets) >= 50:
@@ -246,7 +200,8 @@ def lint_node(state: AgentState) -> Dict[str, Any]:
 
     def _process_term(term):
         try:
-            logger.info(f"🔍 Generating stub for: {term}")
+            frequency = red_links_dict.get(term, 0)
+            logger.info(f"🔍 Generating stub for: {term} (mentions: {frequency})")
             context, sources, source_links = _fetch_context(term, llm)
             data = _generate_stub_data(term, context, source_links, [], llm)
             # スタブ作成

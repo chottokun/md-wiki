@@ -94,6 +94,12 @@ def auto_rebuild():
     print("\n🛠️ Wikiの健康診断（Red-linkの自動起票・conceptsページの再構築）を実行中...")
     subprocess.run([sys.executable, "main.py", "--lint", "--yes"], check=True)
 
+    print("\n📊 管理ダッシュボードを更新中...")
+    subprocess.run([
+        sys.executable, "-c",
+        "from output.obsidian_writer import ObsidianWriter; ObsidianWriter().update_management_dashboard()"
+    ], check=True)
+
     print("\n" + "="*50)
     print("✅ 全データのドラフト再構築が完了しました。")
     print("   - Wiki内に '#未審査' タグ付きで全ページが生成されました。")

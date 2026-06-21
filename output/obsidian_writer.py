@@ -2,13 +2,14 @@ import logging
 import os
 import re
 import shutil
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional
 
 from core.config import Config
 from core.schemas import WikiFrontmatterSchema, DraftConfig
-from core.utils import normalize_term, parse_frontmatter, dump_frontmatter
+from core.utils import normalize_term, parse_frontmatter, dump_frontmatter, WIKI_LINK_RE, find_red_links
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ class ObsidianWriter:
         """
         承認されたドラフトを本番のWikiディレクトリに反映し、レビューファイルを削除する。
         """
+        logger.info(f"Approving update for: {page_name}")
         try:
             safe_page_name = normalize_term(page_name)
             staged_path = self.staged_dir / f"{safe_page_name}_review.md"
@@ -141,7 +143,7 @@ class ObsidianWriter:
         logger.info(f"FINAL MERGED TAGS: {merged_data.get('tags')}")
         
         diff_text = self.generate_diff(original_body, proposed_body) if is_update else ""
-        diff_section = f"\n> [!info] AIからの更新提案\n> ```diff\n{diff_text}\n> ```\n" if (is_update and diff_text) else ""
+        diff_section = f"\n> [!caution] AIによる更新提案 (Merge Diff)\n> 既存の記述と新しい情報を比較し、変更箇所を抽出しました。必要に応じて人間が統合してください。\n> ```diff\n{diff_text}\n> ```\n" if (is_update and diff_text) else ""
 
         final_fm = dump_frontmatter(merged_data)
         footer = self._generate_footer(source_link, raw_link)
@@ -354,47 +356,6 @@ class ObsidianWriter:
             return wiki_path.read_text(encoding="utf-8")
         return None
 
-    def approve_update(self, page_name: str) -> bool:
-        """
-        承認された更新をWikiに反映する。
-        """
-        safe_page_name = normalize_term(page_name)
-        filename = safe_page_name if safe_page_name.endswith(".md") else f"{safe_page_name}.md"
-        staged_path = self.staged_dir / f"{safe_page_name}_review.md"
-        wiki_path = self.wiki_dir / filename
-
-        if not staged_path.exists():
-            logger.error(f"承認対象のファイルが見つかりません: {staged_path}")
-            return False
-
-        try:
-            # レビューファイルからコンテンツを読み込む
-            content = staged_path.read_text(encoding="utf-8")
-
-            # 正規表現によるコンテンツ抽出（## Proposed Full Content から ## Agent Metadata または末尾まで）
-            # マーカーが見つからない場合はファイル全体を対象とする
-            match = re.search(r'## Proposed Full Content\n(.*?)(?:\n---\n## Agent Metadata|$)', content, re.DOTALL)
-            if match:
-                main_content = match.group(1).strip()
-            else:
-                # 後方互換性またはマーカーなしの場合のフォールバック
-                main_content = content
-                if "## Proposed Full Content\n" in main_content:
-                    main_content = main_content.split("## Proposed Full Content\n", 1)[1]
-                if "\n---\n## Agent Metadata" in main_content:
-                    main_content = main_content.split("\n---\n## Agent Metadata", 1)[0]
-
-            # Wikiファイルを更新
-            wiki_path.write_text(main_content.strip(), encoding="utf-8")
-
-            # レビュー用一時ファイルを削除（クリーンアップ）
-            staged_path.unlink()
-            logger.info(f"Wikiを更新しました: {wiki_path}")
-            return True
-        except Exception as e:
-            logger.error(f"Wikiの更新反映中にエラーが発生しました: {str(e)}")
-            return False
-
     def add_log_entry(self, activity_type: str, details: str):
         """OKF §7 準拠の log.md にエントリを追加する。
         
@@ -491,7 +452,7 @@ class ObsidianWriter:
     
     def _generate_subdir_index(self, dir_path: Path):
         """OKF §6 準拠のサブディレクトリ index.md を生成する。"""
-        reserved_files = {"index.md", "log.md"}
+        reserved_files = {"index.md", "log.md", "Management Dashboard.md"}
         pages = sorted([p for p in dir_path.glob("*.md") if p.name not in reserved_files])
         sub_dirs = sorted([d for d in dir_path.iterdir() if d.is_dir() and not d.name.startswith(".")])
         
@@ -518,3 +479,70 @@ class ObsidianWriter:
         
         index_content = "\n".join(sections)
         (dir_path / "index.md").write_text(index_content.strip() + "\n", encoding="utf-8")
+
+    def update_management_dashboard(self):
+        """
+        Wikiの状態を俯瞰できる管理ダッシュボード (Management Dashboard.md) を生成・更新する。
+        """
+        all_pages = list(self.wiki_dir.rglob("*.md"))
+        # raw_markdown, sources, .obsidian, およびダッシュボード自身を除外
+        pages = [
+            p for p in all_pages
+            if "raw_markdown" not in p.parts
+            and "sources" not in p.parts
+            and ".obsidian" not in p.parts
+            and p.name != "Management Dashboard.md"
+        ]
+
+        pending_reviews = []
+        red_links_counter = find_red_links(self.wiki_dir)
+
+        for p in pages:
+            try:
+                content = p.read_text(encoding="utf-8")
+                # 未審査タグのチェック (フロントマターまたは本文中)
+                if "#未審査" in content or "未審査" in content:
+                    # frontmatterを厳密にチェック
+                    data, _ = parse_frontmatter(content)
+                    if data and "未審査" in data.get("tags", []):
+                        pending_reviews.append(p.stem)
+                    elif "#未審査" in content:
+                        pending_reviews.append(p.stem)
+            except Exception as e:
+                logger.error(f"Error processing {p} for dashboard: {e}")
+
+        # ダッシュボードの構築
+        now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        sections = [
+            "# 📋 Management Dashboard",
+            f"\n最終更新: {now_str}\n",
+            "---",
+            "\n## 🔍 審査待ちページ (Pending Reviews)",
+            "以下のページはAIによって生成され、まだ人間による確認が終わっていません。"
+        ]
+
+        if pending_reviews:
+            for p_name in sorted(list(set(pending_reviews))):
+                sections.append(f"- [[{p_name}]]")
+        else:
+            sections.append("- ✅ 審査待ちのページはありません。")
+
+        sections.append("\n## 🚩 要作成概念 (Top Red-links)")
+        sections.append(f"現在、合計 **{len(red_links_counter)}** 個の未作成概念が参照されています。")
+        sections.append("以下は言及頻度が高い順のトップ20です（`main.py --lint` を実行すると、これらを優先して自動生成します）。")
+
+        if red_links_counter:
+            for term, count in red_links_counter.most_common(20):
+                sections.append(f"- [[{term}]] ({count} 回の言及)")
+        else:
+            sections.append("- ✅ 不足している概念はありません。")
+
+        sections.append("\n## 📊 システムステータス (System Status)")
+        sections.append(f"- 総有効ページ数: {len(pages)}")
+        sections.append(f"- 最終更新日時: {now_str}")
+        sections.append(f"- 審査待ち率: {len(pending_reviews) / len(pages) * 100:.1f}%" if pages else "- 審査待ち率: 0%")
+
+        dashboard_content = "\n".join(sections)
+        dashboard_path = self.wiki_dir / "Management Dashboard.md"
+        dashboard_path.write_text(dashboard_content.strip() + "\n", encoding="utf-8")
+        logger.info(f"Dashboard updated: {dashboard_path}")

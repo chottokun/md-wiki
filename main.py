@@ -59,6 +59,7 @@ def run_workflow(input_data: Dict[str, Any], auto_approve: bool = False):
         from output.obsidian_writer import ObsidianWriter
         writer = ObsidianWriter()
         writer.update_index()
+        writer.update_management_dashboard()
         log_type = "maintenance" if "maintenance_topic" in input_data else "ingest"
         writer.add_log_entry(log_type, f"Drafted {current_state['target_page']}")
         run_git_commit(f"Auto-draft: {current_state['target_page']}")
@@ -144,11 +145,15 @@ if __name__ == "__main__":
             sync_mgr = GitSyncManager(store)
             sync_mgr.perform_incremental_sync(include_unreviewed=args.force)
             from output.obsidian_writer import ObsidianWriter
-            ObsidianWriter().add_log_entry("sync", "Performed incremental synchronization.")
+            writer = ObsidianWriter()
+            writer.add_log_entry("sync", "Performed incremental synchronization.")
+            writer.update_management_dashboard()
             run_git_commit("Auto-sync: User triggered manual sync.")
             print("Done: Synchronization complete.")
         elif args.lint:
             run_workflow({"status": "starting_lint", "dry_run": args.dry_run})
+            from output.obsidian_writer import ObsidianWriter
+            ObsidianWriter().update_management_dashboard()
         elif args.maintenance:
             if not args.input:
                 print("統合対象のトピック名を入力してください。")
