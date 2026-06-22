@@ -2,7 +2,9 @@ import unittest
 import os
 import shutil
 import tempfile
+import io
 from pathlib import Path
+from unittest.mock import patch
 from migrate_to_okf import migrate_frontmatter_and_content
 from core.utils import parse_frontmatter
 
@@ -117,6 +119,38 @@ created: "2023-01-01 12:00"
         data, _ = parse_frontmatter(file_path.read_text(encoding="utf-8"))
         self.assertEqual(data["timestamp"], "2023-10-27T00:00:00+09:00")
         self.assertEqual(data["created"], "2023-01-01T12:00:00+09:00")
+
+    @patch('sys.stdout', new_callable=io.StringIO)
+    def test_migrate_frontmatter_and_content_read_error(self, mock_stdout):
+        """
+        Test that migrate_frontmatter_and_content handles file read errors gracefully.
+        """
+        file_path = Path("non_existent_file.md")
+        wiki_root = Path(".")
+
+        # Mock Path.read_text to raise an exception
+        with patch.object(Path, "read_text", side_effect=Exception("Read error")):
+            migrate_frontmatter_and_content(file_path, wiki_root, dry_run=False)
+
+        # Verify that the error message was printed
+        self.assertIn("❌ Error reading non_existent_file.md: Read error", mock_stdout.getvalue())
+
+    @patch('sys.stdout', new_callable=io.StringIO)
+    def test_migrate_frontmatter_and_content_write_error(self, mock_stdout):
+        """
+        Test that migrate_frontmatter_and_content handles file write errors gracefully.
+        """
+        file_path = Path("existent_file.md")
+        wiki_root = Path(".")
+
+        # Mock Path.read_text to return some content
+        # Mock Path.write_text to raise an exception
+        with patch.object(Path, "read_text", return_value="---\ntype: Article\n---\nBody content\n"), \
+             patch.object(Path, "write_text", side_effect=Exception("Write error")):
+            migrate_frontmatter_and_content(file_path, wiki_root, dry_run=False)
+
+        # Verify that the write error message was printed
+        self.assertIn("❌ Error writing existent_file.md: Write error", mock_stdout.getvalue())
 
 if __name__ == "__main__":
     unittest.main()
