@@ -122,8 +122,11 @@ def migrate_frontmatter_and_content(file_path: Path, wiki_root: Path, dry_run: b
         if dry_run:
             print(f"[DRY-RUN] Will update: {file_path}")
         else:
-            file_path.write_text(new_content, encoding="utf-8")
-            print(f"✅ Migrated: {file_path}")
+            try:
+                file_path.write_text(new_content, encoding="utf-8")
+                print(f"✅ Migrated: {file_path}")
+            except Exception as e:
+                print(f"❌ Error writing {file_path}: {e}")
 
 def migrate_log_file(log_path: Path, dry_run: bool):
     if not log_path.exists():
