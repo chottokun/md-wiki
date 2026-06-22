@@ -204,3 +204,10 @@ def test_is_technical_term():
     assert is_technical_term("Large Language Model") is True
     assert is_technical_term("量子化") is True
     assert is_technical_term("BERT") is True
+    assert is_technical_term("AI") is True
+    assert is_technical_term("深層学習") is True
+
+    # 空白文字混じりやその他のエッジケース
+    assert is_technical_term("  \n  ") is False
+    assert is_technical_term("12.34") is False
+    assert is_technical_term("-(99)") is False
