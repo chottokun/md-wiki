@@ -1,8 +1,9 @@
+import functools
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import lru_cache
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from langchain_core.documents import Document
 
@@ -12,6 +13,7 @@ from core.prompts import get_query_prompt
 from core.utils import WIKI_LINK_RE, safe_get_content
 
 logger = logging.getLogger(__name__)
+
 
 class WikiQueryEngine:
     """
@@ -30,8 +32,38 @@ class WikiQueryEngine:
         self.router = router
         self.wiki_dir = wiki_dir if wiki_dir else Config.WIKI_DIR
         # インスタンス変数としてキャッシュをバインドすることで、
-        # クラスレベルの lru_cache による参照サイクル（メモリリーク）を防ぐ
+        # クラスレベル of lru_cache による参照サイクル（メモリリーク）を防ぐ
         self._find_link_path = lru_cache(maxsize=1024)(self._find_link_path)
+
+    @functools.cached_property
+    def _wiki_index(self) -> Dict[str, Path]:
+        """
+        Wikiディレクトリ内のMarkdownファイルをスキャンし、ファイル名をキーにしたインデックスを作成する。
+        cached_property を使用することで、インスタンスごとに1度だけ実行される。
+        重複がある場合は、concepts などの優先度が高いディレクトリのものを優先する。
+        """
+        index = {}
+        try:
+            def get_priority(path: Path) -> int:
+                parts = path.parts
+                if "concepts" in parts:
+                    return 3
+                elif "raw_markdown" in parts:
+                    return 1
+                return 2
+
+            # rglob("*.md") で再帰的に全ファイルをリストアップ
+            for p in self.wiki_dir.rglob("*.md"):
+                if p.is_file():
+                    stem = p.stem
+                    if stem not in index:
+                        index[stem] = p
+                    else:
+                        if get_priority(p) > get_priority(index[stem]):
+                            index[stem] = p
+        except Exception as e:
+            logger.warning(f"Error indexing wiki directory {self.wiki_dir}: {e}")
+        return index
 
     def query(self, query_text: str, k: int = 8) -> str:
         """
@@ -41,11 +73,11 @@ class WikiQueryEngine:
 
         # 1. Qdrantから関連チャンクを取得
         initial_docs = self.qdrant_store.search(query_text, k=k)
-        
+
         # 2. ヒットしたWikiページから [[リンク]] を抽出し、未取得の関連情報を能動的に取得
         all_context_docs = list(initial_docs)
         seen_sources = {d.metadata.get("source") for d in initial_docs}
-        
+
         # 追跡対象のリンクを収集
         links_to_fetch = set()
         for d in initial_docs:
@@ -64,17 +96,18 @@ class WikiQueryEngine:
                     doc = future.result()
                     if doc:
                         all_context_docs.append(doc)
+                        seen_sources.add(future_to_link[future])
 
         # 3. コンテキストの構造化
         context = self._build_context_string(all_context_docs)
-        
+
         # 4. LLMによる回答生成
         llm = self.router.get_model(LLMLayer.L2)
         lang_inst = self.router.get_language_instruction()
-        
+
         prompt = self._build_prompt(query_text, context, lang_inst)
         response = llm.invoke(prompt)
-        
+
         return safe_get_content(response.content)
 
     def _fetch_link_content(self, link: str) -> Optional[Document]:
@@ -97,33 +130,23 @@ class WikiQueryEngine:
     def _find_link_path(self, link: str) -> Optional[Path]:
         """
         指定されたリンク名に対応するMarkdownファイルをWikiディレクトリ内で検索する。
-        サブディレクトリも再帰的に探索する。キャッシュにより再検索を高速化する。
+        キャッシュされたインデックスを使用する。
         """
-        # 1. 直下をまず探す (高速化のため)
-        direct_path = self.wiki_dir / f"{link}.md"
-        if direct_path.exists():
-            return direct_path
-        
-        # 2. サブディレクトリを再帰的に探す
-        # Windowsのケースインセンシティブな環境を考慮しつつ、rglobを使用
-        try:
-            for p in self.wiki_dir.rglob(f"{link}.md"):
-                return p
-        except Exception as e:
-            logger.warning(f"Error searching for link [[{link}]]: {e}")
-            
-        return None
+        return self._wiki_index.get(link)
 
     def _build_context_string(self, docs: List[Document]) -> str:
         context_parts = []
         for d in docs:
             dtype = d.metadata.get("type", "unknown")
             source = d.metadata.get("source", "unknown")
-            if dtype == "wiki_page": prefix = "📄 [Wiki Page]"
-            elif dtype == "explicit_link": prefix = "🔗 [Linked Context]"
-            else: prefix = "一次情報 [Raw Source]"
+            if dtype == "wiki_page":
+                prefix = "📄 [Wiki Page]"
+            elif dtype == "explicit_link":
+                prefix = "🔗 [Linked Context]"
+            else:
+                prefix = "一次情報 [Raw Source]"
             context_parts.append(f"{prefix} Source: {source}\n{d.page_content}")
-        
+
         return "\n\n---\n\n".join(context_parts)
 
     def _build_prompt(self, query: str, context: str, lang_inst: str) -> list:

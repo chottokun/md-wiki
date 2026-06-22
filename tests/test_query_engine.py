@@ -14,11 +14,12 @@ class TestWikiQueryEngine(unittest.TestCase):
         self.mock_router.get_language_instruction.return_value = "日本語で回答してください。"
         
         # テスト対象
-        self.engine = WikiQueryEngine(self.mock_qdrant, self.mock_router)
+        self.engine = WikiQueryEngine(self.mock_qdrant, self.mock_router, wiki_dir=Path("fake_wiki"))
 
-    @patch('pathlib.Path.exists')
+    @patch('pathlib.Path.rglob')
     @patch('pathlib.Path.read_text')
-    def test_query_flow_with_links(self, mock_read, mock_exists):
+    @patch('pathlib.Path.is_file')
+    def test_query_flow_with_links(self, mock_is_file, mock_read, mock_rglob):
         """
         検索結果にリンクが含まれている場合、その内容もコンテキストに統合されることを確認。
         """
@@ -28,7 +29,13 @@ class TestWikiQueryEngine(unittest.TestCase):
         ]
 
         # 2. リンク先ファイルのモック
-        mock_exists.return_value = True
+        mock_path = MagicMock(spec=Path)
+        mock_path.stem = "LinkedConcept"
+        mock_path.is_file.return_value = True
+        mock_path.read_text.return_value = "LinkedConcept は重要な技術です。"
+
+        mock_rglob.return_value = [mock_path]
+        mock_is_file.return_value = True
         mock_read.return_value = "LinkedConcept は重要な技術です。"
 
         # 3. LLM の応答モック
@@ -43,17 +50,15 @@ class TestWikiQueryEngine(unittest.TestCase):
         # invoke に渡されたプロンプトを確認
         args, _ = self.mock_model.invoke.call_args
         prompt = args[0]
-        
-        # プロンプトがリスト形式（[('system', '...'), ('user', '...')]) の場合、文字列に変換して検証
         prompt_str = str(prompt)
         
         self.assertIn("LinkedConcept は重要な技術です。", prompt_str)
         self.assertIn("Original", prompt_str)
         self.assertIn("日本語で回答してください。", prompt_str)
 
-    @patch('pathlib.Path.glob')
+    @patch('pathlib.Path.rglob')
     @patch('pathlib.Path.read_text')
-    def test_query_follows_links_in_subdirectories(self, mock_read, mock_glob):
+    def test_query_follows_links_in_subdirectories(self, mock_read, mock_rglob):
         """
         リンク先ファイルがサブディレクトリにある場合でも、再帰的に検索して取得できることを確認。
         """
@@ -62,13 +67,13 @@ class TestWikiQueryEngine(unittest.TestCase):
             Document(page_content="詳細は [[DeepConcept]] を参照。", metadata={"source": "Original", "type": "wiki_page"})
         ]
 
-        # 2. Path.glob のモック
+        # 2. Path.rglob のモック
         mock_deep_path = MagicMock(spec=Path)
         mock_deep_path.name = "DeepConcept.md"
         mock_deep_path.stem = "DeepConcept"
-        mock_deep_path.exists.return_value = True
+        mock_deep_path.is_file.return_value = True
         mock_deep_path.read_text.return_value = "DeepConcept はサブディレクトリに隠れた重要な概念です。"
-        mock_glob.return_value = [mock_deep_path]
+        mock_rglob.return_value = [mock_deep_path]
 
         # 3. LLM の応答モック
         self.mock_model.invoke.return_value = MagicMock(content="回答結果。")
@@ -81,6 +86,53 @@ class TestWikiQueryEngine(unittest.TestCase):
         prompt = args[0]
         prompt_str = str(prompt)
         self.assertIn("DeepConcept はサブディレクトリに隠れた重要な概念です。", prompt_str)
+
+    @patch('pathlib.Path.rglob')
+    def test_wiki_index_caching(self, mock_rglob):
+        """
+        _wiki_index がキャッシュされ、rglob の呼び出しが1回のみであることを検証。
+        """
+        mock_rglob.return_value = []
+        
+        # 初回アクセス
+        idx1 = self.engine._wiki_index
+        # 2回目アクセス
+        idx2 = self.engine._wiki_index
+        
+        self.assertIs(idx1, idx2)
+        mock_rglob.assert_called_once()
+
+    def test_wiki_index_duplicate_prioritization(self):
+        """
+        重複する stem がある場合、concepts ディレクトリが最優先され、raw_markdown が最低限にされることを検証。
+        """
+        # モックのパス群を作成
+        path_raw = MagicMock(spec=Path)
+        path_raw.stem = "BERT"
+        path_raw.is_file.return_value = True
+        path_raw.parts = ("fake_wiki", "raw_markdown", "BERT.md")
+        
+        path_concepts = MagicMock(spec=Path)
+        path_concepts.stem = "BERT"
+        path_concepts.is_file.return_value = True
+        path_concepts.parts = ("fake_wiki", "concepts", "BERT.md")
+
+        path_references = MagicMock(spec=Path)
+        path_references.stem = "BERT"
+        path_references.is_file.return_value = True
+        path_references.parts = ("fake_wiki", "references", "BERT.md")
+
+        # 1. raw_markdown と references の場合、references が優先
+        engine1 = WikiQueryEngine(self.mock_qdrant, self.mock_router, wiki_dir=Path("fake_wiki"))
+        with patch('pathlib.Path.rglob', return_value=[path_raw, path_references]):
+            idx1 = engine1._wiki_index
+            self.assertEqual(idx1["BERT"], path_references)
+
+        # 2. references と concepts の場合、concepts が優先
+        engine2 = WikiQueryEngine(self.mock_qdrant, self.mock_router, wiki_dir=Path("fake_wiki"))
+        with patch('pathlib.Path.rglob', return_value=[path_references, path_concepts]):
+            idx2 = engine2._wiki_index
+            self.assertEqual(idx2["BERT"], path_concepts)
 
 if __name__ == '__main__':
     unittest.main()
