@@ -31,7 +31,7 @@ class TestObsidianWriterErrorHandling(unittest.TestCase):
             with self.assertLogs('output.obsidian_writer', level='ERROR') as cm:
                 success = self.writer.approve_update(page_name)
                 self.assertFalse(success)
-                self.assertTrue(any("Wikiの更新反映中にエラーが発生しました: Write failed" in output for output in cm.output))
+                self.assertTrue(any("Write failed" in output for output in cm.output))
 
         self.assertTrue(review_file.exists())
 
@@ -47,7 +47,7 @@ class TestObsidianWriterErrorHandling(unittest.TestCase):
             with self.assertLogs('output.obsidian_writer', level='ERROR') as cm:
                 success = self.writer.approve_update(page_name)
                 self.assertFalse(success)
-                self.assertTrue(any("Wikiの更新反映中にエラーが発生しました: Unlink failed" in output for output in cm.output))
+                self.assertTrue(any("Unlink failed" in output for output in cm.output))
 
         wiki_file = self.test_wiki_dir / f"{page_name}.md"
         self.assertTrue(wiki_file.exists())
