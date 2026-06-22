@@ -28,10 +28,12 @@ class TestObsidianWriterErrorHandling(unittest.TestCase):
         with patch.object(Path, 'write_text') as mock_write:
             mock_write.side_effect = Exception("Write failed")
 
-            with self.assertLogs('output.obsidian_writer', level='ERROR') as cm:
+            with patch('output.obsidian_writer.logger') as mock_logger:
                 success = self.writer.approve_update(page_name)
                 self.assertFalse(success)
-                self.assertTrue(any("Write failed" in output for output in cm.output))
+                mock_logger.error.assert_called()
+                error_msg = mock_logger.error.call_args[0][0]
+                self.assertIn("Write failed", str(error_msg))
 
         self.assertTrue(review_file.exists())
 
@@ -44,10 +46,12 @@ class TestObsidianWriterErrorHandling(unittest.TestCase):
         with patch.object(Path, 'unlink') as mock_unlink:
             mock_unlink.side_effect = Exception("Unlink failed")
 
-            with self.assertLogs('output.obsidian_writer', level='ERROR') as cm:
+            with patch('output.obsidian_writer.logger') as mock_logger:
                 success = self.writer.approve_update(page_name)
                 self.assertFalse(success)
-                self.assertTrue(any("Unlink failed" in output for output in cm.output))
+                mock_logger.error.assert_called()
+                error_msg = mock_logger.error.call_args[0][0]
+                self.assertIn("Unlink failed", str(error_msg))
 
         wiki_file = self.test_wiki_dir / f"{page_name}.md"
         self.assertTrue(wiki_file.exists())

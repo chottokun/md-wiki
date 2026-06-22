@@ -82,6 +82,8 @@ def test_sync_manager_get_current_head(mock_repo_class, tmp_path):
     repo_dir.mkdir()
     import git
     repo = git.Repo.init(repo_dir)
+    repo.config_writer().set_value("user", "name", "Test User").release()
+    repo.config_writer().set_value("user", "email", "test@example.com").release()
     # Need at least one commit for HEAD to exist
     (repo_dir / "init.txt").write_text("init")
     repo.git.add(all=True)
@@ -97,6 +99,8 @@ def test_git_commit_logic_with_temp_repo(tmp_path):
     repo_dir = tmp_path / "repo"
     repo_dir.mkdir()
     repo = git.Repo.init(repo_dir)
+    repo.config_writer().set_value("user", "name", "Test User").release()
+    repo.config_writer().set_value("user", "email", "test@example.com").release()
     
     # Create a file
     test_file = repo_dir / "test.md"
