@@ -87,5 +87,52 @@ class TestWikiQueryEngine(unittest.TestCase):
         prompt_str = str(prompt)
         self.assertIn("DeepConcept はサブディレクトリに隠れた重要な概念です。", prompt_str)
 
+    @patch('pathlib.Path.rglob')
+    def test_wiki_index_caching(self, mock_rglob):
+        """
+        _wiki_index がキャッシュされ、rglob の呼び出しが1回のみであることを検証。
+        """
+        mock_rglob.return_value = []
+        
+        # 初回アクセス
+        idx1 = self.engine._wiki_index
+        # 2回目アクセス
+        idx2 = self.engine._wiki_index
+        
+        self.assertIs(idx1, idx2)
+        mock_rglob.assert_called_once()
+
+    def test_wiki_index_duplicate_prioritization(self):
+        """
+        重複する stem がある場合、concepts ディレクトリが最優先され、raw_markdown が最低限にされることを検証。
+        """
+        # モックのパス群を作成
+        path_raw = MagicMock(spec=Path)
+        path_raw.stem = "BERT"
+        path_raw.is_file.return_value = True
+        path_raw.parts = ("fake_wiki", "raw_markdown", "BERT.md")
+        
+        path_concepts = MagicMock(spec=Path)
+        path_concepts.stem = "BERT"
+        path_concepts.is_file.return_value = True
+        path_concepts.parts = ("fake_wiki", "concepts", "BERT.md")
+
+        path_references = MagicMock(spec=Path)
+        path_references.stem = "BERT"
+        path_references.is_file.return_value = True
+        path_references.parts = ("fake_wiki", "references", "BERT.md")
+
+        # 1. raw_markdown と references の場合、references が優先
+        engine1 = WikiQueryEngine(self.mock_qdrant, self.mock_router, wiki_dir=Path("fake_wiki"))
+        with patch('pathlib.Path.rglob', return_value=[path_raw, path_references]):
+            idx1 = engine1._wiki_index
+            self.assertEqual(idx1["BERT"], path_references)
+
+        # 2. references と concepts の場合、concepts が優先
+        engine2 = WikiQueryEngine(self.mock_qdrant, self.mock_router, wiki_dir=Path("fake_wiki"))
+        with patch('pathlib.Path.rglob', return_value=[path_references, path_concepts]):
+            idx2 = engine2._wiki_index
+            self.assertEqual(idx2["BERT"], path_concepts)
+
 if __name__ == '__main__':
     unittest.main()

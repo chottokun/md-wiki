@@ -35,16 +35,27 @@ class WikiQueryEngine:
         """
         Wikiディレクトリ内のMarkdownファイルをスキャンし、ファイル名をキーにしたインデックスを作成する。
         cached_property を使用することで、インスタンスごとに1度だけ実行される。
+        重複がある場合は、concepts などの優先度が高いディレクトリのものを優先する。
         """
         index = {}
         try:
+            def get_priority(path: Path) -> int:
+                parts = path.parts
+                if "concepts" in parts:
+                    return 3
+                elif "raw_markdown" in parts:
+                    return 1
+                return 2
+
             # rglob("*.md") で再帰的に全ファイルをリストアップ
             for p in self.wiki_dir.rglob("*.md"):
                 if p.is_file():
-                    # 重複がある場合は最初に見つかったものを優先
-                    # (将来的に特定のディレクトリを優先するロジックの追加も可能)
-                    if p.stem not in index:
-                        index[p.stem] = p
+                    stem = p.stem
+                    if stem not in index:
+                        index[stem] = p
+                    else:
+                        if get_priority(p) > get_priority(index[stem]):
+                            index[stem] = p
         except Exception as e:
             logger.warning(f"Error indexing wiki directory {self.wiki_dir}: {e}")
         return index
