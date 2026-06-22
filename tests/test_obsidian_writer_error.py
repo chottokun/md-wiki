@@ -21,7 +21,7 @@ class TestObsidianWriterErrorHandling(unittest.TestCase):
 
     def test_approve_update_write_error(self):
         """Test that approve_update returns False and logs error when writing fails."""
-        page_name = "ErrorPage"
+        page_name = "errorpage"
         review_file = self.test_staged_dir / f"{page_name}_review.md"
         review_file.write_text("Some content", encoding="utf-8")
 
@@ -39,7 +39,7 @@ class TestObsidianWriterErrorHandling(unittest.TestCase):
 
     def test_approve_update_unlink_error(self):
         """Test that approve_update returns False and logs error when unlinking fails."""
-        page_name = "UnlinkErrorPage"
+        page_name = "unlinkerrorpage"
         review_file = self.test_staged_dir / f"{page_name}_review.md"
         review_file.write_text("Some content", encoding="utf-8")
 

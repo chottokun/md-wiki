@@ -21,7 +21,11 @@ class TestLLMRouter(unittest.TestCase):
     def test_openai_compatible_l3(self):
         # L3はプロバイダーによらず、現状は OpenAI 互換 (sakura-v1) と想定（Routerの実装に依存）
         # ただしプロバイダーが ollama の場合は ollama が返るようになっている
-        with patch.dict(os.environ, {"LLM_PROVIDER": "openai_compatible", "OPENAI_COMPATIBLE_BASE_URL": "https://api.ai.sakura.ad.jp/v1/"}):
+        with patch.dict(os.environ, {
+            "LLM_PROVIDER": "openai_compatible",
+            "OPENAI_COMPATIBLE_BASE_URL": "https://api.ai.sakura.ad.jp/v1/",
+            "OPENAI_API_KEY": "fake-key"
+        }):
             router = LLMRouter()
             model = router.get_model(LLMLayer.L3)
             self.assertIsInstance(model, ChatOpenAI)
