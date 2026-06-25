@@ -141,10 +141,13 @@ class QdrantHybridStore:
         # テスト等でディレクトリを明示的に指定された場合に対応
         w_dir = Path(wiki_dir) if wiki_dir else self.wiki_dir
         
-        wiki_files = list(w_dir.glob("**/*.md"))
+        wiki_files = w_dir.rglob("*.md")
 
         def process_file(file_path: Path) -> List[Document]:
+            # 特殊なファイルや隠しディレクトリ配下のファイルを除外
             if any(x in file_path.name for x in [".md-wiki-sync-state", "Home.md", "index.md", "log.md"]):
+                return []
+            if any(part.startswith(".") for part in file_path.parts):
                 return []
             
             try:
@@ -174,14 +177,27 @@ class QdrantHybridStore:
                     doc_type = "Article"
                 return self.get_chunks(content, {"source": source_name, "type": doc_type})
 
-        all_documents = []
+        import concurrent.futures
+        batch_size = 100
+        current_batch = []
+
         with ThreadPoolExecutor() as executor:
-            results = executor.map(process_file, wiki_files)
-            for doc_list in results:
-                all_documents.extend(doc_list)
+            future_to_file = {executor.submit(process_file, f): f for f in wiki_files}
+            for future in concurrent.futures.as_completed(future_to_file):
+                try:
+                    doc_list = future.result()
+                    if doc_list:
+                        current_batch.extend(doc_list)
+
+                    if len(current_batch) >= batch_size:
+                        self.add_documents(current_batch)
+                        current_batch = []
+                except Exception as e:
+                    file_path = future_to_file[future]
+                    logger.error(f"Error processing file {file_path}: {e}")
         
-        if all_documents:
-            self.add_documents(all_documents)
+        if current_batch:
+            self.add_documents(current_batch)
 
         logger.info("全件同期が完了しました。")
 
