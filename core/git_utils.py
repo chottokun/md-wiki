@@ -22,7 +22,7 @@ def run_git_commit(message: str):
 
         repo.git.add(all=True)
         if repo.is_dirty() or repo.untracked_files:
-            repo.git.commit("-m", message)
+            repo.git.commit(f"--message={message}", "--")
             logger.info(f"Git Commit: {message}")
     except Exception as e:
         logger.error(f"Wikiへの自動コミットに失敗しました: {e}", exc_info=True)

@@ -161,7 +161,7 @@ class GitSyncManager:
         """
         try:
             # 1. まずはHEADとの差分を確認
-            diff_text = self.repo.git.diff('HEAD', file_path)
+            diff_text = self.repo.git.diff('HEAD', '--', file_path)
             if diff_text.strip():
                 return diff_text.strip()
             
