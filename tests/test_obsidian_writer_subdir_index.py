@@ -1,0 +1,96 @@
+import pytest
+from pathlib import Path
+from output.obsidian_writer import ObsidianWriter
+from unittest.mock import patch
+
+@pytest.fixture
+def temp_wiki(tmp_path):
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+    return wiki_dir
+
+def test_generate_subdir_index_basic(temp_wiki):
+    writer = ObsidianWriter(wiki_dir=str(temp_wiki))
+    subdir = temp_wiki / "concepts"
+    subdir.mkdir()
+
+    # Create some pages
+    (subdir / "page1.md").write_text("---\ndescription: This is page 1\n---\n# Page 1", encoding="utf-8")
+    (subdir / "page2.md").write_text("---\nabstract: This is page 2\n---\n# Page 2", encoding="utf-8")
+    (subdir / "no_desc.md").write_text("# No Description", encoding="utf-8")
+
+    # Create a sub-subdir
+    (subdir / "sub_subdir").mkdir()
+
+    writer._generate_subdir_index(subdir)
+
+    index_path = subdir / "index.md"
+    assert index_path.exists()
+    content = index_path.read_text(encoding="utf-8")
+
+    assert "# Concepts" in content
+    assert "* [sub_subdir](sub_subdir/index.md)" in content
+    assert "* [page1](page1.md) - This is page 1" in content
+    assert "* [page2](page2.md) - This is page 2" in content
+    assert "* [no_desc](no_desc.md)" in content
+    assert " - # No Description" not in content # Should not have a description if none found
+
+def test_generate_subdir_index_empty(temp_wiki):
+    writer = ObsidianWriter(wiki_dir=str(temp_wiki))
+    subdir = temp_wiki / "empty_dir"
+    subdir.mkdir()
+
+    writer._generate_subdir_index(subdir)
+
+    index_path = subdir / "index.md"
+    assert index_path.exists()
+    content = index_path.read_text(encoding="utf-8")
+    assert "# Empty_dir" in content
+    # Should only contain the header
+    assert content.strip() == "# Empty_dir"
+
+def test_generate_subdir_index_reserved_files(temp_wiki):
+    writer = ObsidianWriter(wiki_dir=str(temp_wiki))
+    subdir = temp_wiki / "reserved_test"
+    subdir.mkdir()
+
+    (subdir / "index.md").write_text("existing index", encoding="utf-8")
+    (subdir / "log.md").write_text("log", encoding="utf-8")
+    (subdir / "Management Dashboard.md").write_text("dashboard", encoding="utf-8")
+    (subdir / "normal.md").write_text("# Normal", encoding="utf-8")
+
+    writer._generate_subdir_index(subdir)
+
+    content = (subdir / "index.md").read_text(encoding="utf-8")
+    assert "[normal](normal.md)" in content
+    # Check that reserved files are NOT in the list
+    # We skip the header because the header is "# Reserved_test"
+    list_content = content[content.find("\n"):]
+    assert "index.md" not in list_content
+    assert "log.md" not in list_content
+    assert "Management Dashboard.md" not in list_content
+
+def test_generate_subdir_index_error_handling(temp_wiki):
+    writer = ObsidianWriter(wiki_dir=str(temp_wiki))
+    subdir = temp_wiki / "error_test"
+    subdir.mkdir()
+
+    page = subdir / "error_page.md"
+    page.write_text("# Error Page", encoding="utf-8")
+
+    # Mock read_text to raise an error for this specific file
+    original_read_text = Path.read_text
+    def mocked_read_text(path_obj, *args, **kwargs):
+        if "error_page.md" in str(path_obj):
+            raise PermissionError("Mocked Permission Error")
+        return original_read_text(path_obj, *args, **kwargs)
+
+    with patch.object(Path, "read_text", side_effect=mocked_read_text, autospec=True):
+        # This should not raise an exception but log it and continue
+        writer._generate_subdir_index(subdir)
+
+    index_path = subdir / "index.md"
+    assert index_path.exists()
+    content = index_path.read_text(encoding="utf-8")
+    # The page should be skipped because _get_description raised an exception
+    assert "* [error_page](error_page.md)" not in content
