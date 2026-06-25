@@ -65,14 +65,18 @@ class GitSyncManager:
             for d in diff_history:
                 if d.b_path: changed_paths.add(d.b_path)
 
-            for line in changed_paths:
+            def _check_file(line: str) -> Optional[Path]:
                 full_path = self.wiki_dir / line
-                
                 if full_path.suffix == ".md" and full_path.exists():
                     # 特殊ファイルは除外
                     if any(x in full_path.name for x in [".md-wiki-sync-state", "Home.md", "log.md"]):
-                        continue
-                    changed_files.add(full_path.resolve())
+                        return None
+                    return full_path.absolute()
+                return None
+
+            with ThreadPoolExecutor() as executor:
+                results = executor.map(_check_file, changed_paths)
+                changed_files = {res for res in results if res}
         except Exception as e:
             logger.error(f"Error getting changed files via GitPython: {e}")
         
@@ -103,8 +107,8 @@ class GitSyncManager:
 
         logger.info(f"{len(changed_files)} 件の変更を検出しました。同期を開始します。")
 
-        def _prepare_update(file_path: Path) -> Optional[Tuple[str, str, str, dict]]:
-            """ファイルを読み込み、タグチェックを行い、更新情報を準備する。"""
+        def _prepare_update(file_path: Path) -> Optional[Tuple[str, List[Document], str]]:
+            """ファイルを読み込み、タグチェックを行い、ドキュメントチャンクを作成する。"""
             try:
                 content = file_path.read_text(encoding="utf-8")
                 if not include_unreviewed:
@@ -119,35 +123,40 @@ class GitSyncManager:
                 else:
                     metadata = {"source": source_name, "type": "wiki_page"}
 
-                return (source_name, content, file_path.name, metadata)
+                # テキスト分割（CPU負荷が高い処理）を並列フェーズで実行
+                documents = self.store.get_chunks(content, metadata)
+                return (source_name, documents, file_path.name)
             except Exception as e:
-                logger.error(f"Error reading file {file_path}: {e}")
+                logger.error(f"Error reading/processing file {file_path}: {e}")
                 return None
 
-        # 並列でファイルを読み込み、チェックを行う
+        # 並列でファイルを読み込み、チェックとチャンク分割を行う
         with ThreadPoolExecutor() as executor:
             update_data_list = list(filter(None, executor.map(_prepare_update, changed_files)))
 
-        # バッチ処理
+        # バッチ処理を並列化してネットワークI/O（Qdrant操作）をオーバーラップさせる
         batch_size = Config.INCREMENTAL_SYNC_BATCH_SIZE
-        for i in range(0, len(update_data_list), batch_size):
-            batch = update_data_list[i : i + batch_size]
+        batches = [update_data_list[i : i + batch_size] for i in range(0, len(update_data_list), batch_size)]
 
+        def _process_batch(batch):
             # 1. バッチで既存のソースを削除
             source_names_to_delete = [data[0] for data in batch]
             self.store.delete_sources(source_names_to_delete)
 
-            # 2. バッチで新しいドキュメントを作成
+            # 2. ドキュメントを収集
             all_documents: List[Document] = []
-            for _, content, _, metadata in batch:
-                all_documents.extend(self.store.get_chunks(content, metadata))
+            for _, documents, _ in batch:
+                all_documents.extend(documents)
             
             # 3. まとめて登録
             if all_documents:
                 self.store.add_documents(all_documents)
             
-            for _, _, filename, _ in batch:
+            for _, _, filename in batch:
                 logger.info(f"  [Sync] {filename} を更新しました。")
+
+        with ThreadPoolExecutor() as executor:
+            list(executor.map(_process_batch, batches))
 
         # 同期状態を更新
         current_head = self._get_current_head()
