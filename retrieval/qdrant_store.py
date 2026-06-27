@@ -122,10 +122,17 @@ class QdrantHybridStore:
         self.add_documents(documents)
 
     def add_documents(self, documents: List[Document], batch_size: int = 100):
-        """ドキュメントをバッチサイズごとに分割して登録する。"""
-        for i in range(0, len(documents), batch_size):
-            batch = documents[i : i + batch_size]
-            self.vector_store.add_documents(batch)
+        """ドキュメントをバッチサイズごとに分割して並列に登録する。"""
+        batches = [documents[i : i + batch_size] for i in range(0, len(documents), batch_size)]
+
+        # CPUバウンドな埋め込み生成とIOバウンドなQdrant登録を並列化
+        max_workers = min(len(batches), (os.cpu_count() or 4) * 2)
+        if max_workers > 1:
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                list(executor.map(self.vector_store.add_documents, batches))
+        else:
+            for batch in batches:
+                self.vector_store.add_documents(batch)
 
     def search(self, query: str, k: int = 5) -> List[Document]:
         return self.vector_store.similarity_search(query, k=k)
@@ -175,12 +182,17 @@ class QdrantHybridStore:
                 return self.get_chunks(content, {"source": source_name, "type": doc_type})
 
         all_documents = []
+        # ファイル読み込みとパースを並列実行
         with ThreadPoolExecutor() as executor:
             results = executor.map(process_file, wiki_files)
             for doc_list in results:
                 all_documents.extend(doc_list)
+
+                # ドキュメントが溜まったら逐次処理を開始してメモリ消費を抑えつつ高速化を図ることも可能だが、
+                # add_documents側でバッチ並列化するため、ここでは全件収集する。
         
         if all_documents:
+            # 埋め込み生成と登録を並列化
             self.add_documents(all_documents)
 
         logger.info("全件同期が完了しました。")
