@@ -31,9 +31,6 @@ class WikiQueryEngine:
         self.qdrant_store = qdrant_store
         self.router = router
         self.wiki_dir = wiki_dir if wiki_dir else Config.WIKI_DIR
-        # インスタンス変数としてキャッシュをバインドすることで、
-        # クラスレベル of lru_cache による参照サイクル（メモリリーク）を防ぐ
-        self._find_link_path = lru_cache(maxsize=1024)(self._find_link_path)
 
     @functools.cached_property
     def _wiki_index(self) -> Dict[str, Path]:
@@ -42,25 +39,28 @@ class WikiQueryEngine:
         cached_property を使用することで、インスタンスごとに1度だけ実行される。
         重複がある場合は、concepts などの優先度が高いディレクトリのものを優先する。
         """
+        import os
         index = {}
         try:
-            def get_priority(path: Path) -> int:
-                parts = path.parts
+            def get_priority(p: Path) -> int:
+                parts = p.parts
                 if "concepts" in parts:
                     return 3
                 elif "raw_markdown" in parts:
                     return 1
                 return 2
 
-            # rglob("*.md") で再帰的に全ファイルをリストアップ
-            for p in self.wiki_dir.rglob("*.md"):
-                if p.is_file():
-                    stem = p.stem
-                    if stem not in index:
-                        index[stem] = p
-                    else:
-                        if get_priority(p) > get_priority(index[stem]):
-                            index[stem] = p
+            # rglob("*.md") より os.walk の方が大規模ディレクトリでは高速な傾向にある
+            for root, _, files in os.walk(self.wiki_dir):
+                for file in files:
+                    if file.endswith(".md"):
+                        path = Path(root) / file
+                        stem = path.stem
+                        if stem not in index:
+                            index[stem] = path
+                        else:
+                            if get_priority(path) > get_priority(index[stem]):
+                                index[stem] = path
         except Exception as e:
             logger.warning(f"Error indexing wiki directory {self.wiki_dir}: {e}")
         return index
@@ -78,20 +78,29 @@ class WikiQueryEngine:
         all_context_docs = list(initial_docs)
         seen_sources = {d.metadata.get("source") for d in initial_docs}
 
-        # 追跡対象のリンクを収集
-        links_to_fetch = set()
+        # 追跡対象のリンクを収集（実在するファイルのみ）
+        # メインスレッドでパスを解決することで、インデックス構築時のロック競合を回避し、
+        # 存在しないファイルに対する無駄なスレッド生成を抑制する。
+        links_to_fetch = {}
         for d in initial_docs:
             if d.metadata.get("type") in ["wiki_page", "Concept", "Article", "Source", "Reference", "Landscape"]:
+                # リンクの抽出 (Markdownエスケープを考慮)
                 content = d.page_content.replace("\\", "")
                 links = WIKI_LINK_RE.findall(content)
                 for link in links:
-                    if link not in seen_sources:
-                        links_to_fetch.add(link)
-        
+                    if link not in seen_sources and link not in links_to_fetch:
+                        link_path = self._find_link_path(link)
+                        if link_path:
+                            links_to_fetch[link] = link_path
+
         # 並列でリンク先コンテンツを取得
         if links_to_fetch:
             with ThreadPoolExecutor() as executor:
-                future_to_link = {executor.submit(self._fetch_link_content, link): link for link in links_to_fetch}
+                # すでにパスは解決済みなので、直接パスを渡して読み込む
+                future_to_link = {
+                    executor.submit(self._read_link_content, link, path): link
+                    for link, path in links_to_fetch.items()
+                }
                 for future in as_completed(future_to_link):
                     doc = future.result()
                     if doc:
@@ -110,21 +119,19 @@ class WikiQueryEngine:
 
         return safe_get_content(response.content)
 
-    def _fetch_link_content(self, link: str) -> Optional[Document]:
+    def _read_link_content(self, link: str, link_path: Path) -> Optional[Document]:
         """
-        リンク先のコンテンツを取得し、Documentオブジェクトとして返す。
+        リンク先のコンテンツを読み込み、Documentオブジェクトとして返す。
         """
-        link_path = self._find_link_path(link)
-        if link_path:
-            try:
-                logger.info(f"リンク追跡: [[{link}]] ({link_path}) を追加の文脈として読み込みます。")
-                linked_content = link_path.read_text(encoding="utf-8")
-                return Document(
-                    page_content=linked_content,
-                    metadata={"source": link, "type": "explicit_link"}
-                )
-            except Exception as e:
-                logger.error(f"Error reading linked file {link_path}: {e}")
+        try:
+            logger.info(f"リンク追跡: [[{link}]] ({link_path}) を追加の文脈として読み込みます。")
+            linked_content = link_path.read_text(encoding="utf-8")
+            return Document(
+                page_content=linked_content,
+                metadata={"source": link, "type": "explicit_link"}
+            )
+        except Exception as e:
+            logger.error(f"Error reading linked file {link_path}: {e}")
         return None
 
     def _find_link_path(self, link: str) -> Optional[Path]:
