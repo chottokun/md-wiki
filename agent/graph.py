@@ -93,6 +93,18 @@ def ingest_node(state: AgentState) -> Dict[str, Any]:
 
 
 
+def _format_context(term: str, evidences: list) -> tuple[str, list, list]:
+    """証拠ドキュメントをWiki文脈用の形式に変換する。"""
+    if evidences:
+        sources = list(set([d.metadata.get('source') for d in evidences if d.metadata.get('source')]))
+        source_links = [f"[[sources/{s}]]" for s in sources]
+        context = "\n\n".join([f"Source: {d.metadata.get('source')}\n{d.page_content}" for d in evidences])
+    else:
+        sources = []
+        source_links = ["LLM_Internal_Knowledge"]
+        context = f"No specific context found in Qdrant. Please generate a stub page using your internal knowledge about '{term}'."
+    return context, sources, source_links
+
 def _fetch_context(term: str, llm) -> tuple[str, list, list]:
     search_query = term
     store = get_qdrant_store()
@@ -108,15 +120,53 @@ def _fetch_context(term: str, llm) -> tuple[str, list, list]:
         logger.info(f"日本語用語 '{term}' を '{english_term}' として再検索します")
         evidences = [d for d in store.search(english_term, k=8) if d.metadata.get("type") == "raw_source"]
 
-    if evidences:
-        sources = list(set([d.metadata.get('source') for d in evidences if d.metadata.get('source')]))
-        source_links = [f"[[sources/{s}]]" for s in sources]
-        context = "\n\n".join([f"Source: {d.metadata.get('source')}\n{d.page_content}" for d in evidences])
-    else:
-        sources = []
-        source_links = ["LLM_Internal_Knowledge"]
-        context = f"No specific context found in Qdrant. Please generate a stub page using your internal knowledge about '{term}'."
-    return context, sources, source_links
+    return _format_context(term, evidences)
+
+def _batch_fetch_context(terms: list[str], llm) -> dict[str, tuple[str, list, list]]:
+    """複数の用語に対してコンテキストをバッチで取得する。"""
+    if not terms:
+        return {}
+
+    store = get_qdrant_store()
+    # 1. 最初のバッチ検索
+    results1 = store.search_batch(terms, k=10)
+
+    def get_evidence_priority(d):
+        text = d.page_content
+        return 0 if re.search(r'[ぁ-んァ-ヶ亜-熙]', text) else 1
+
+    final_evidences = {}
+    terms_needing_translation = []
+
+    for term, docs in zip(terms, results1):
+        evidences = [d for d in docs if d.metadata.get("type") in ["raw_source", "raw_markdown", "wiki_page"]]
+        evidences = sorted(evidences, key=get_evidence_priority)
+
+        if (not evidences or get_evidence_priority(evidences[0]) == 1) and re.search(r'[ぁ-んァ-ヶ亜-熙]', term):
+            terms_needing_translation.append(term)
+        else:
+            final_evidences[term] = evidences
+
+    # 2. 翻訳が必要な場合のバッチ処理
+    if terms_needing_translation:
+        prompts = [get_translation_prompt(t) for t in terms_needing_translation]
+        translated_results = llm.batch(prompts)
+        english_terms = [res.content.strip() for res in translated_results]
+
+        for t, eng in zip(terms_needing_translation, english_terms):
+            logger.info(f"日本語用語 '{t}' を '{eng}' として再検索します")
+
+        results2 = store.search_batch(english_terms, k=8)
+        for t, docs in zip(terms_needing_translation, results2):
+            final_evidences[t] = [d for d in docs if d.metadata.get("type") == "raw_source"]
+
+    # 3. コンテキストの組み立て
+    batch_context = {}
+    for term in terms:
+        evidences = final_evidences.get(term, [])
+        batch_context[term] = _format_context(term, evidences)
+
+    return batch_context
 
 def _generate_stub_data(term: str, context: str, source_links: list, evidences: list, llm) -> dict:
     body_prompt = get_lint_body_prompt(term, context)
@@ -198,11 +248,15 @@ def lint_node(state: AgentState) -> Dict[str, Any]:
     if not targets:
         return {"status": "linted"}
 
-    def _process_term(term):
+    # バッチでコンテキストを取得 (N+1クエリを回避)
+    batch_contexts = _batch_fetch_context(targets, llm)
+
+    def _process_term_optimized(term):
         try:
             frequency = red_links_dict.get(term, 0)
             logger.info(f"🔍 Generating stub for: {term} (mentions: {frequency})")
-            context, sources, source_links = _fetch_context(term, llm)
+            # 事前取得したコンテキストを使用
+            context, sources, source_links = batch_contexts[term]
             data = _generate_stub_data(term, context, source_links, [], llm)
             # スタブ作成
             writer.create_draft_from_schema(data, sub_dir="concepts")
@@ -211,9 +265,9 @@ def lint_node(state: AgentState) -> Dict[str, Any]:
             logger.error(f"Error generating stub for {term}: {e}")
             return False
 
-    # スレッドプールを使用して並列処理 (I/OバウンドなLLM/Qdrant呼び出しを高速化)
+    # スレッドプールを使用して並列処理 (I/OバウンドなLLM生成呼び出しを高速化)
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        list(executor.map(_process_term, targets))
+        list(executor.map(_process_term_optimized, targets))
     
     return {"status": "linted"}
 
