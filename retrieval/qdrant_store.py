@@ -130,6 +130,17 @@ class QdrantHybridStore:
     def search(self, query: str, k: int = 5) -> List[Document]:
         return self.vector_store.similarity_search(query, k=k)
 
+    def search_batch(self, queries: List[str], k: int = 5) -> List[List[Document]]:
+        """
+        複数のクエリに対して並列で検索を実行する。
+        """
+        if not queries:
+            return []
+
+        with ThreadPoolExecutor(max_workers=min(len(queries), 10)) as executor:
+            results = list(executor.map(lambda q: self.search(q, k=k), queries))
+        return results
+
     def sync_from_disk(self, include_unreviewed: Optional[bool] = None, wiki_dir: Optional[str] = None, raw_md_dir: Optional[str] = None):
         """ディスク上の全Wikiファイルを再スキャンしてQdrantを再構築する。"""
         if include_unreviewed is None:
