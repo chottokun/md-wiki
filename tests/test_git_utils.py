@@ -26,7 +26,7 @@ class TestRunGitCommit(unittest.TestCase):
 
         # Verify
         mock_repo.git.add.assert_called_once_with(all=True)
-        mock_repo.git.commit.assert_called_once_with("-m", "Test message")
+        mock_repo.git.commit.assert_called_once_with("--message=Test message", "--")
         mock_logger.info.assert_called_with("Git Commit: Test message")
 
     @patch("core.git_utils.git.Repo")
@@ -58,7 +58,7 @@ class TestRunGitCommit(unittest.TestCase):
         run_git_commit("Test message")
 
         # Verify
-        mock_repo.git.commit.assert_called_once_with("-m", "Test message")
+        mock_repo.git.commit.assert_called_once_with("--message=Test message", "--")
 
     @patch("core.git_utils.git.Repo")
     @patch("core.git_utils.logger")

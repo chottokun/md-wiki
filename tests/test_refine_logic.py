@@ -14,13 +14,15 @@ class TestRefineLogic(unittest.TestCase):
     @patch('git.Repo')
     def test_extract_unstaged_diff(self, mock_repo):
         """unstagedな変更をgit diffで正しく抽出できるか。"""
-        # Repo().git.diff('HEAD', 'Page.md') の戻り値を設定
-        mock_repo.return_value.git.diff.return_value = "--- a/wiki/Page.md\n+++ b/wiki/Page.md\n@@ -1,2 +1,2 @@\n-Old info\n+New factual info"
+        # Repo().git.diff('HEAD', '--', 'Page.md') の戻り値を設定
+        mock_git = mock_repo.return_value.git
+        mock_git.diff.return_value = "--- a/wiki/Page.md\n+++ b/wiki/Page.md\n@@ -1,2 +1,2 @@\n-Old info\n+New factual info"
         
         mgr = GitSyncManager(store=MagicMock())
         diff = mgr.get_unstaged_diff("Page.md")
         
         # 3. 検証
+        mock_git.diff.assert_called_once_with('HEAD', '--', 'Page.md')
         assert "New factual info" in diff
         assert "+New factual info" in diff
 

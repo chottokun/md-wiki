@@ -119,7 +119,7 @@ def test_git_commit_logic_with_temp_repo(tmp_path):
     # Logic from main.py
     repo.git.add(all=True)
     if repo.is_dirty() or repo.untracked_files:
-        repo.git.commit("-m", "test commit")
+        repo.git.commit("--message=test commit", "--")
         
     assert not repo.is_dirty()
     
@@ -133,7 +133,7 @@ def test_git_commit_logic_with_temp_repo(tmp_path):
     # After add, it's no longer untracked but it IS dirty (staged changes)
     assert repo.is_dirty()
     if repo.is_dirty() or repo.untracked_files:
-        repo.git.commit("-m", "test commit 2")
+        repo.git.commit("--message=test commit 2", "--")
         
     assert not repo.is_dirty()
 
