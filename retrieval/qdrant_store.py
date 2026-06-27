@@ -30,8 +30,8 @@ class QdrantHybridStore:
         self.collection_name = collection_name
         self.wiki_dir = Path("wiki")
 
-        mode = os.getenv("QDRANT_MODE", "local")
-        if mode == "server":
+        self.mode = os.getenv("QDRANT_MODE", "local")
+        if self.mode == "server":
             url = os.getenv("QDRANT_URL", "http://localhost:6333")
             logger.info(f"Qdrantをサーバーモード({url})で初期化します。")
             self.client = QdrantClient(url=url)
@@ -125,8 +125,10 @@ class QdrantHybridStore:
         """ドキュメントをバッチサイズごとに分割して並列に登録する。"""
         batches = [documents[i : i + batch_size] for i in range(0, len(documents), batch_size)]
 
-        # CPUバウンドな埋め込み生成とIOバウンドなQdrant登録を並列化
-        max_workers = min(len(batches), (os.cpu_count() or 4) * 2)
+        # Qdrant serverモード時のみCPUバウンドな埋め込み生成とIOバウンドなQdrant登録を並列化
+        # local/memoryモード時は同時書き込みによるロック競合を避けるため順次実行
+        is_server = getattr(self, "mode", "local") == "server"
+        max_workers = min(len(batches), (os.cpu_count() or 4) * 2) if is_server else 1
         if max_workers > 1:
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 list(executor.map(self.vector_store.add_documents, batches))
