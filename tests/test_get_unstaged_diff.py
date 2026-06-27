@@ -21,7 +21,7 @@ class TestGetUnstagedDiff(unittest.TestCase):
         result = self.sync_manager.get_unstaged_diff("file.md")
 
         self.assertEqual(result, expected_diff)
-        self.mock_repo.git.diff.assert_called_once_with('HEAD', "file.md")
+        self.mock_repo.git.diff.assert_called_once_with('HEAD', '--', "file.md")
 
     def test_untracked_file_exists(self):
         """2. 差分がなく、新規ファイル（Untracked）として存在する場合、ファイル内容を返す"""
