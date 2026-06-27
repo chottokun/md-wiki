@@ -30,8 +30,9 @@ class QdrantHybridStore:
         self.collection_name = collection_name
         self.wiki_dir = Path("wiki")
 
-        self.mode = os.getenv("QDRANT_MODE", "local")
-        if self.mode == "server":
+        mode = os.getenv("QDRANT_MODE", "local")
+        self.mode = mode
+        if mode == "server":
             url = os.getenv("QDRANT_URL", "http://localhost:6333")
             logger.info(f"Qdrantをサーバーモード({url})で初期化します。")
             self.client = QdrantClient(url=url)
