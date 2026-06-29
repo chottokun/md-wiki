@@ -9,20 +9,33 @@ from typing import Dict, Any, Optional
 
 from core.config import Config
 from core.schemas import WikiFrontmatterSchema, DraftConfig
-from core.utils import normalize_term, parse_frontmatter, dump_frontmatter, WIKI_LINK_RE, find_red_links
+from core.utils import (
+    normalize_term,
+    parse_frontmatter,
+    dump_frontmatter,
+    WIKI_LINK_RE,
+    find_red_links,
+)
 
 logger = logging.getLogger(__name__)
 
 # タグ抽出用の正規表現 (Obsidianの仕様に準拠)
 # 前に空白または行頭があり、#の後に1文字以上の英数字・スラッシュ・ハイフンが続くもの
-TAG_PATTERN = re.compile(r'(?<!\S)#([\w/-]+)')
+TAG_PATTERN = re.compile(r"(?<!\S)#([\w/-]+)")
+
 
 class ObsidianWriter:
-    def __init__(self, wiki_dir: Optional[str] = None, staged_dir: Optional[str] = None):
-        self.wiki_dir = Path(wiki_dir).resolve() if wiki_dir else Config.WIKI_DIR.resolve()
+    def __init__(
+        self, wiki_dir: Optional[str] = None, staged_dir: Optional[str] = None
+    ):
+        self.wiki_dir = (
+            Path(wiki_dir).resolve() if wiki_dir else Config.WIKI_DIR.resolve()
+        )
         self.wiki_dir.mkdir(parents=True, exist_ok=True)
         # Staged dir defaults to _staged relative to the workspace root if not provided
-        self.staged_dir = Path(staged_dir).resolve() if staged_dir else Path("_staged").resolve()
+        self.staged_dir = (
+            Path(staged_dir).resolve() if staged_dir else Path("_staged").resolve()
+        )
         self.staged_dir.mkdir(parents=True, exist_ok=True)
 
     def approve_update(self, page_name: str) -> bool:
@@ -43,12 +56,18 @@ class ObsidianWriter:
 
             # Robust content extraction:
             # 1. Try to find content between '## Proposed Full Content' and a boundary (--- or ## Agent Metadata)
-            match = re.search(r"## Proposed Full Content\n+(.*?)(?=\n---|\n## Agent Metadata|$)", content, re.DOTALL)
+            match = re.search(
+                r"## Proposed Full Content\n+(.*?)(?=\n---|\n## Agent Metadata|$)",
+                content,
+                re.DOTALL,
+            )
             if match:
                 final_content = match.group(1).strip()
             else:
                 # 2. If not found, take everything before the first boundary
-                match = re.search(r"(.*?)(?=\n---|\n## Agent Metadata|$)", content, re.DOTALL)
+                match = re.search(
+                    r"(.*?)(?=\n---|\n## Agent Metadata|$)", content, re.DOTALL
+                )
                 if match:
                     final_content = match.group(1).strip()
                 else:
@@ -69,7 +88,7 @@ class ObsidianWriter:
         """ベースディレクトリ配下の安全なパスを生成し、ディレクトリトラバーサルを防止する。"""
         # 絶対パスが渡された場合にパスの起点がリセットされるのを防ぐため、
         # 各パーツから先頭のスラッシュを除去する
-        safe_parts = [str(Path(p)).lstrip(os.sep).lstrip('/') for p in path_parts if p]
+        safe_parts = [str(Path(p)).lstrip(os.sep).lstrip("/") for p in path_parts if p]
 
         # 結合して絶対パスに変換
         joined = base_dir.joinpath(*safe_parts).resolve()
@@ -78,7 +97,9 @@ class ObsidianWriter:
             # joined が base_dir 配下にあることを確認
             joined.relative_to(base_dir)
         except ValueError:
-            logger.error(f"Path traversal attempt blocked: {path_parts} under {base_dir}")
+            logger.error(
+                f"Path traversal attempt blocked: {path_parts} under {base_dir}"
+            )
             raise ValueError(f"Security Alert: Invalid path components {path_parts}")
 
         return joined
@@ -86,10 +107,11 @@ class ObsidianWriter:
     def generate_diff(self, old_text: str, new_text: str) -> str:
         """単純な行ベースの差分を生成（difflibを使用）"""
         import difflib
+
         old_lines = old_text.splitlines()
         new_lines = new_text.splitlines()
         diff = difflib.unified_diff(old_lines, new_lines, lineterm="")
-        return "\n".join(list(diff)[2:]) # ヘッダーを除去
+        return "\n".join(list(diff)[2:])  # ヘッダーを除去
 
     def create_draft_file(self, config: DraftConfig) -> Path:
         """
@@ -105,80 +127,119 @@ class ObsidianWriter:
 
         target_dir.mkdir(parents=True, exist_ok=True)
 
-        filename = safe_page_name if safe_page_name.endswith(".md") else f"{safe_page_name}.md"
+        filename = (
+            safe_page_name if safe_page_name.endswith(".md") else f"{safe_page_name}.md"
+        )
         wiki_path = self._get_safe_path(target_dir, filename)
-        
-        source_link = self._handle_source_file(config.source_filename, config.source_path) if config.source_filename else None
-        raw_link = self._handle_raw_markdown(safe_page_name, config.raw_markdown) if config.raw_markdown else None
+
+        source_link = (
+            self._handle_source_file(config.source_filename, config.source_path)
+            if config.source_filename
+            else None
+        )
+        raw_link = (
+            self._handle_raw_markdown(safe_page_name, config.raw_markdown)
+            if config.raw_markdown
+            else None
+        )
 
         existing_data = None
         original_body = ""
         is_update = wiki_path.exists()
         if is_update:
-            existing_data, original_body = parse_frontmatter(wiki_path.read_text(encoding="utf-8"))
+            existing_data, original_body = parse_frontmatter(
+                wiki_path.read_text(encoding="utf-8")
+            )
 
         # 新しいコンテンツのパース
         proposed_data, proposed_body = parse_frontmatter(config.proposed_content)
-        
+
         # クレンジング
-        proposed_body = re.sub(r'^```(?:markdown|md)?\s*\n', '', proposed_body.strip())
-        proposed_body = re.sub(r'\n```\s*$', '', proposed_body.strip())
+        proposed_body = re.sub(r"^```(?:markdown|md)?\s*\n", "", proposed_body.strip())
+        proposed_body = re.sub(r"\n```\s*$", "", proposed_body.strip())
 
         # メタデータのマージ
         base_data = existing_data if existing_data else {}
         if proposed_data:
             for key in ["tags", "sources", "aliases", "concepts"]:
                 p_val = proposed_data.get(key, [])
-                if isinstance(p_val, str): p_val = [p_val]
+                if isinstance(p_val, str):
+                    p_val = [p_val]
                 e_val = base_data.get(key, [])
-                if isinstance(e_val, str): e_val = [e_val]
+                if isinstance(e_val, str):
+                    e_val = [e_val]
                 combined = list(set([v for v in (e_val + p_val) if v]))
-                if combined: base_data[key] = combined
-            
+                if combined:
+                    base_data[key] = combined
+
             for key, val in proposed_data.items():
-                if key not in ["tags", "sources", "aliases", "concepts", "created", "updated"]:
+                if key not in [
+                    "tags",
+                    "sources",
+                    "aliases",
+                    "concepts",
+                    "created",
+                    "updated",
+                ]:
                     base_data[key] = val
 
-        merged_data = self._prepare_metadata(base_data, source_link, raw_link, config.page_name, sub_dir=config.sub_dir)
+        merged_data = self._prepare_metadata(
+            base_data, source_link, raw_link, config.page_name, sub_dir=config.sub_dir
+        )
         logger.info(f"FINAL MERGED TAGS: {merged_data.get('tags')}")
-        
-        diff_text = self.generate_diff(original_body, proposed_body) if is_update else ""
-        diff_section = f"\n> [!caution] AIによる更新提案 (Merge Diff)\n> 既存の記述と新しい情報を比較し、変更箇所を抽出しました。必要に応じて人間が統合してください。\n> ```diff\n{diff_text}\n> ```\n" if (is_update and diff_text) else ""
+
+        diff_text = (
+            self.generate_diff(original_body, proposed_body) if is_update else ""
+        )
+        diff_section = (
+            f"\n> [!caution] AIによる更新提案 (Merge Diff)\n> 既存の記述と新しい情報を比較し、変更箇所を抽出しました。必要に応じて人間が統合してください。\n> ```diff\n{diff_text}\n> ```\n"
+            if (is_update and diff_text)
+            else ""
+        )
 
         final_fm = dump_frontmatter(merged_data)
         footer = self._generate_footer(source_link, raw_link)
-        
+
         body_content = proposed_body.strip()
         if not body_content.startswith("# "):
             body_content = f"# {config.page_name}\n\n{body_content}"
-        
+
         final_content = f"{final_fm}\n\n{diff_section}\n{body_content}\n{footer}"
         wiki_path.write_text(final_content.strip(), encoding="utf-8")
-        
+
         logger.info(f"Draft created/updated: {wiki_path}")
         return wiki_path
 
-    def _prepare_metadata(self, base_data: Dict[str, Any], source_link: Optional[str], raw_link: Optional[str], page_name: Optional[str] = None, sub_dir: Optional[str] = None) -> Dict[str, Any]:
+    def _prepare_metadata(
+        self,
+        base_data: Dict[str, Any],
+        source_link: Optional[str],
+        raw_link: Optional[str],
+        page_name: Optional[str] = None,
+        sub_dir: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """最終的なYAMLメタデータを構築し、Pydanticスキーマで厳密に管理する。"""
         now_str = datetime.now().strftime("%Y-%m-%dT%H:%M:%S+09:00")
-        
+
         # 既存/新規データを統合
         merged_dict = base_data.copy()
-        
+
         # リンク情報の統合
         sources = merged_dict.get("sources", [])
-        if source_link: sources.append(source_link)
+        if source_link:
+            sources.append(source_link)
         merged_dict["sources"] = sorted(list(set(sources)))
 
         # スキーマによるバリデーションとデフォルト値適用
         try:
             # Pydantic スキーマでパース & 正規化
             fm = WikiFrontmatterSchema.model_validate(merged_dict)
-            
+
             # 日付とタイプの強制設定
-            if not fm.created: fm.created = now_str
+            if not fm.created:
+                fm.created = now_str
             fm.timestamp = now_str
-            
+
             # type の動的判定
             if not fm.type or fm.type in ["wiki", "Article", "Concept"]:
                 if sub_dir == "concepts":
@@ -191,23 +252,41 @@ class ObsidianWriter:
                     fm.type = "Reference"
                 elif not fm.type or fm.type == "wiki":
                     fm.type = "Article"
-            
+
             # タグとエイリアス内の特殊ハイフン (ノンブレイキングハイフンなど) を標準ハイフンにクレンジング
-            fm.tags = [t.replace('\u2011', '-').replace('\u2010', '-').replace('\uFF0D', '-').strip() for t in fm.tags]
+            fm.tags = [
+                t.replace("\u2011", "-")
+                .replace("\u2010", "-")
+                .replace("\uff0d", "-")
+                .strip()
+                for t in fm.tags
+            ]
             fm.tags = [t for t in fm.tags if t]
-            
-            fm.aliases = [a.replace('\u2011', '-').replace('\u2010', '-').replace('\uFF0D', '-').strip() for a in fm.aliases]
+
+            fm.aliases = [
+                a.replace("\u2011", "-")
+                .replace("\u2010", "-")
+                .replace("\uff0d", "-")
+                .strip()
+                for a in fm.aliases
+            ]
             fm.aliases = [a for a in fm.aliases if a]
 
             # concepts 内の特殊ハイフンも標準ハイフンにクレンジングし重複排除
-            fm.concepts = [c.replace('\u2011', '-').replace('\u2010', '-').replace('\uFF0D', '-').strip() for c in fm.concepts]
+            fm.concepts = [
+                c.replace("\u2011", "-")
+                .replace("\u2010", "-")
+                .replace("\uff0d", "-")
+                .strip()
+                for c in fm.concepts
+            ]
             fm.concepts = sorted(list(set([c for c in fm.concepts if c])))
 
             # エイリアスが空の場合、ページ名から年度サフィックスや括弧を除外した自動エイリアスを提案
             if not fm.aliases and page_name:
-                cleaned_alias = re.sub(r'_\d{4}$', '', page_name)
-                cleaned_alias = re.sub(r'（.*?）$', '', cleaned_alias)
-                cleaned_alias = re.sub(r'\(.*?\)$', '', cleaned_alias)
+                cleaned_alias = re.sub(r"_\d{4}$", "", page_name)
+                cleaned_alias = re.sub(r"（.*?）$", "", cleaned_alias)
+                cleaned_alias = re.sub(r"\(.*?\)$", "", cleaned_alias)
                 if cleaned_alias != page_name:
                     fm.aliases.append(cleaned_alias)
 
@@ -220,10 +299,12 @@ class ObsidianWriter:
             # 要約（description）のクレンジング：ブロックコールのマークアップや太字記号を除去してプレーンテキストにする
             if fm.description:
                 cleaned = fm.description
-                cleaned = re.sub(r'>\s*\[!abstract\]\s*', '', cleaned, flags=re.IGNORECASE)
-                cleaned = re.sub(r'>\s*要約\s*', '', cleaned, flags=re.IGNORECASE)
-                cleaned = re.sub(r'^>\s*', '', cleaned, flags=re.MULTILINE)
-                cleaned = cleaned.replace('**', '').replace('__', '')
+                cleaned = re.sub(
+                    r">\s*\[!abstract\]\s*", "", cleaned, flags=re.IGNORECASE
+                )
+                cleaned = re.sub(r">\s*要約\s*", "", cleaned, flags=re.IGNORECASE)
+                cleaned = re.sub(r"^>\s*", "", cleaned, flags=re.MULTILINE)
+                cleaned = cleaned.replace("**", "").replace("__", "")
                 cleaned = cleaned.strip()
                 fm.description = cleaned
 
@@ -234,30 +315,63 @@ class ObsidianWriter:
             merged_dict["updated"] = now_str
             return merged_dict
 
-    def create_draft_from_schema(self, data: Dict[str, Any], sub_dir: Optional[str] = None) -> Path:
+    def create_draft_from_schema(
+        self, data: Dict[str, Any], sub_dir: Optional[str] = None
+    ) -> Path:
         page_name = data.get("title", "Untitled")
         proposed_body = data.get("body", "")
         nested_data, clean_body = parse_frontmatter(proposed_body)
-        
+
         metadata = {
-            "tags": list(set(data.get("tags", []) + (nested_data.get("tags", []) if nested_data else []))),
-            "aliases": list(set(data.get("aliases", []) + (nested_data.get("aliases", []) if nested_data else []))),
-            "concepts": list(set(data.get("concepts", []) + (nested_data.get("concepts", []) if nested_data else []))),
-            "sources": list(set(data.get("sources", []) + (nested_data.get("sources", []) if nested_data else []))),
+            "tags": list(
+                set(
+                    data.get("tags", [])
+                    + (nested_data.get("tags", []) if nested_data else [])
+                )
+            ),
+            "aliases": list(
+                set(
+                    data.get("aliases", [])
+                    + (nested_data.get("aliases", []) if nested_data else [])
+                )
+            ),
+            "concepts": list(
+                set(
+                    data.get("concepts", [])
+                    + (nested_data.get("concepts", []) if nested_data else [])
+                )
+            ),
+            "sources": list(
+                set(
+                    data.get("sources", [])
+                    + (nested_data.get("sources", []) if nested_data else [])
+                )
+            ),
             "description": data.get("description", data.get("abstract", "")),
-            "type": data.get("type") or (nested_data.get("type") if nested_data else None) or ("Concept" if sub_dir == "concepts" else ("RawSource" if sub_dir == "raw_markdown" else "Article"))
+            "type": data.get("type")
+            or (nested_data.get("type") if nested_data else None)
+            or (
+                "Concept"
+                if sub_dir == "concepts"
+                else ("RawSource" if sub_dir == "raw_markdown" else "Article")
+            ),
         }
-        
+
         # LLMが誤って生成した # タイトル や > [!abstract] コールアウトを本文から削除
-        clean_body = re.sub(r'^#\s+.*?\n+', '', clean_body, count=1).strip()
-        clean_body = re.sub(r'^>\s*\[!abstract\].*?(?:\n>.*)*\n+', '', clean_body, flags=re.MULTILINE | re.IGNORECASE).strip()
-        
+        clean_body = re.sub(r"^#\s+.*?\n+", "", clean_body, count=1).strip()
+        clean_body = re.sub(
+            r"^>\s*\[!abstract\].*?(?:\n>.*)*\n+",
+            "",
+            clean_body,
+            flags=re.MULTILINE | re.IGNORECASE,
+        ).strip()
+
         concepts_str = "\n".join([f"- {c}" for c in data.get("concepts", [])])
-        
+
         final_body = f"""# {page_name}
 
 > [!abstract] 要約
-> {data.get('description', data.get('abstract', ''))}
+> {data.get("description", data.get("abstract", ""))}
 
 {clean_body}
 
@@ -271,32 +385,39 @@ class ObsidianWriter:
             source_filename=data.get("source_filename"),
             source_path=data.get("source_path"),
             raw_markdown=data.get("raw_markdown"),
-            sub_dir=sub_dir
+            sub_dir=sub_dir,
         )
         return self.create_draft_file(config)
 
-    def _handle_source_file(self, filename: Optional[str], source_path: Optional[str] = None) -> Optional[str]:
-        if not filename: return None
+    def _handle_source_file(
+        self, filename: Optional[str], source_path: Optional[str] = None
+    ) -> Optional[str]:
+        if not filename:
+            return None
         sources_dir = self._get_safe_path(self.wiki_dir, "sources")
         sources_dir.mkdir(exist_ok=True)
-        
+
         # 出力先パスの検証
         target_path = self._get_safe_path(sources_dir, filename)
 
-        # 入力ソースパスの決定
-        if source_path:
-            src = Path(source_path).resolve()
-        else:
-            # _raw ディレクトリを探す
-            raw_base = Path("_raw").resolve()
-            src = raw_base / Path(filename).name
+        # 入力ソースパスの決定 (常に _raw ディレクトリ配下に制限)
+        raw_base = Path("_raw").resolve()
+        raw_base.mkdir(exist_ok=True)
 
-        if not src.exists():
-            # 相対パスでの検索も試行
-            src = Path(filename).resolve()
+        try:
+            if source_path:
+                # source_path が指定されている場合も _raw 配下であることを強制
+                src = self._get_safe_path(raw_base, source_path)
+            else:
+                # filename から _raw 内のパスを生成
+                src = self._get_safe_path(raw_base, Path(filename).name)
+        except ValueError as e:
+            logger.error(f"  [File] Source path validation failed: {e}")
+            # セキュリティ違反の場合はコピーを中断し None を返す
+            return None
 
         logger.info(f"  [File] Attempting to copy source: {src} -> {target_path}")
-            
+
         if src.exists() and src.is_file():
             try:
                 shutil.copy2(src, target_path)
@@ -310,7 +431,8 @@ class ObsidianWriter:
         return f"[[{rel_path}]]"
 
     def _handle_raw_markdown(self, name: str, content: Optional[str]) -> Optional[str]:
-        if not content: return None
+        if not content:
+            return None
         raw_dir = self._get_safe_path(self.wiki_dir, "raw_markdown")
         raw_dir.mkdir(exist_ok=True)
 
@@ -323,7 +445,7 @@ class ObsidianWriter:
             "title": f"Raw Source of {name}",
             "description": f"Raw parsed markdown content for {name}",
             "timestamp": now_str,
-            "tags": ["raw-source"]
+            "tags": ["raw-source"],
         }
         fm_str = dump_frontmatter(fm_data)
         full_content = f"{fm_str}\n{content}"
@@ -332,7 +454,9 @@ class ObsidianWriter:
         rel_path = raw_path.relative_to(self.wiki_dir).as_posix()
         return f"[[{rel_path}]]"
 
-    def _generate_footer(self, source_link: Optional[str], raw_link: Optional[str]) -> str:
+    def _generate_footer(
+        self, source_link: Optional[str], raw_link: Optional[str]
+    ) -> str:
         """OKF §8 準拠の Citations セクションを生成する。"""
         footer = "\n\n# Citations\n"
         if source_link:
@@ -358,7 +482,7 @@ class ObsidianWriter:
 
     def add_log_entry(self, activity_type: str, details: str):
         """OKF §7 準拠の log.md にエントリを追加する。
-        
+
         日付グループ方式: 同一日のエントリはまとめる。
         フォーマット: ## YYYY-MM-DD + * **Action**: description
         """
@@ -367,13 +491,15 @@ class ObsidianWriter:
         # アクション名の先頭を大文字に
         action = activity_type.capitalize()
         new_entry = f"* **{action}**: {details}\n"
-        
+
         if log_path.exists():
             content = log_path.read_text(encoding="utf-8")
             today_heading = f"## {today_str}"
             if today_heading in content:
                 # 同一日のセクションがある場合、その直後に追加
-                content = content.replace(today_heading + "\n", today_heading + "\n" + new_entry, 1)
+                content = content.replace(
+                    today_heading + "\n", today_heading + "\n" + new_entry, 1
+                )
             else:
                 # 新しい日付セクションを先頭に追加（ヘッダーの直後）
                 header_end = content.find("\n") + 1 if content.startswith("# ") else 0
@@ -387,7 +513,7 @@ class ObsidianWriter:
 
     def update_index(self):
         """OKF §6 準拠の index.md を自動生成する。
-        
+
         - フロントマターなし（§6 準拠）
         - 標準 Markdown リンクを使用（OKF 標準、選択肢A）
         - 各エントリに description を付加
@@ -395,26 +521,34 @@ class ObsidianWriter:
         """
         # 予約ファイル名と除外ディレクトリ
         reserved_files = {"index.md", "log.md"}
-        
+
         # サブディレクトリの収集
-        subdirs = sorted([d for d in self.wiki_dir.iterdir() 
-                         if d.is_dir() and not d.name.startswith(".")])
-        
+        subdirs = sorted(
+            [
+                d
+                for d in self.wiki_dir.iterdir()
+                if d.is_dir() and not d.name.startswith(".")
+            ]
+        )
+
         # ルート直下の概念ページ収集
-        root_pages = sorted([p for p in self.wiki_dir.glob("*.md")
-                            if p.name not in reserved_files])
-        
+        root_pages = sorted(
+            [p for p in self.wiki_dir.glob("*.md") if p.name not in reserved_files]
+        )
+
         # --- ルート index.md の生成 ---
         sections = ["# md-wiki Knowledge Bundle"]
-        
+
         # サブディレクトリセクション
         if subdirs:
             sections.append("\n# Subdirectories\n")
             for d in subdirs:
                 # サブディレクトリ内のページ数をカウント
                 md_count = len(list(d.rglob("*.md"))) - len(list(d.glob("index.md")))
-                sections.append(f"* [{d.name}]({d.name}/index.md) - {md_count} concepts")
-        
+                sections.append(
+                    f"* [{d.name}]({d.name}/index.md) - {md_count} concepts"
+                )
+
         # ルート直下のページ
         if root_pages:
             sections.append("\n# Articles\n")
@@ -426,14 +560,16 @@ class ObsidianWriter:
                     logger.error(f"Error reading {p} for index: {e}")
                     # Skip files that cannot be read
                     continue
-        
+
         index_content = "\n".join(sections)
-        (self.wiki_dir / "index.md").write_text(index_content.strip() + "\n", encoding="utf-8")
-        
+        (self.wiki_dir / "index.md").write_text(
+            index_content.strip() + "\n", encoding="utf-8"
+        )
+
         # --- サブディレクトリの index.md 生成 ---
         for d in subdirs:
             self._generate_subdir_index(d)
-    
+
     def _get_description(self, file_path: Path) -> str:
         """ファイルの frontmatter から description を取得する。"""
         # ファイルの読み込み自体でエラー（PermissionError等）が発生した場合は、呼び出し元で処理するために伝播させる
@@ -445,25 +581,31 @@ class ObsidianWriter:
                 if desc:
                     # 1行に切り詰め（80文字以内）
                     first_line = desc.split("\n")[0].strip()
-                    return first_line[:80] + "..." if len(first_line) > 80 else first_line
+                    return (
+                        first_line[:80] + "..." if len(first_line) > 80 else first_line
+                    )
         except Exception:
             pass
         return ""
-    
+
     def _generate_subdir_index(self, dir_path: Path):
         """OKF §6 準拠のサブディレクトリ index.md を生成する。"""
         reserved_files = {"index.md", "log.md", "Management Dashboard.md"}
-        pages = sorted([p for p in dir_path.glob("*.md") if p.name not in reserved_files])
-        sub_dirs = sorted([d for d in dir_path.iterdir() if d.is_dir() and not d.name.startswith(".")])
-        
+        pages = sorted(
+            [p for p in dir_path.glob("*.md") if p.name not in reserved_files]
+        )
+        sub_dirs = sorted(
+            [d for d in dir_path.iterdir() if d.is_dir() and not d.name.startswith(".")]
+        )
+
         dir_name = dir_path.name.capitalize()
         sections = [f"# {dir_name}"]
-        
+
         if sub_dirs:
             sections.append("")
             for sd in sub_dirs:
                 sections.append(f"* [{sd.name}]({sd.name}/index.md)")
-        
+
         if pages:
             sections.append("")
             for p in pages:
@@ -476,9 +618,11 @@ class ObsidianWriter:
                 except (PermissionError, FileNotFoundError, OSError) as e:
                     logger.error(f"Error reading {p} for subdir index: {e}")
                     continue
-        
+
         index_content = "\n".join(sections)
-        (dir_path / "index.md").write_text(index_content.strip() + "\n", encoding="utf-8")
+        (dir_path / "index.md").write_text(
+            index_content.strip() + "\n", encoding="utf-8"
+        )
 
     def update_management_dashboard(self):
         """
@@ -487,7 +631,8 @@ class ObsidianWriter:
         all_pages = list(self.wiki_dir.rglob("*.md"))
         # raw_markdown, sources, .obsidian, およびダッシュボード自身を除外
         pages = [
-            p for p in all_pages
+            p
+            for p in all_pages
             if "raw_markdown" not in p.parts
             and "sources" not in p.parts
             and ".obsidian" not in p.parts
@@ -518,7 +663,7 @@ class ObsidianWriter:
             f"\n最終更新: {now_str}\n",
             "---",
             "\n## 🔍 審査待ちページ (Pending Reviews)",
-            "以下のページはAIによって生成され、まだ人間による確認が終わっていません。"
+            "以下のページはAIによって生成され、まだ人間による確認が終わっていません。",
         ]
 
         if pending_reviews:
@@ -528,8 +673,12 @@ class ObsidianWriter:
             sections.append("- ✅ 審査待ちのページはありません。")
 
         sections.append("\n## 🚩 要作成概念 (Top Red-links)")
-        sections.append(f"現在、合計 **{len(red_links_counter)}** 個の未作成概念が参照されています。")
-        sections.append("以下は言及頻度が高い順のトップ20です（`main.py --lint` を実行すると、これらを優先して自動生成します）。")
+        sections.append(
+            f"現在、合計 **{len(red_links_counter)}** 個の未作成概念が参照されています。"
+        )
+        sections.append(
+            "以下は言及頻度が高い順のトップ20です（`main.py --lint` を実行すると、これらを優先して自動生成します）。"
+        )
 
         if red_links_counter:
             for term, count in red_links_counter.most_common(20):
@@ -540,7 +689,11 @@ class ObsidianWriter:
         sections.append("\n## 📊 システムステータス (System Status)")
         sections.append(f"- 総有効ページ数: {len(pages)}")
         sections.append(f"- 最終更新日時: {now_str}")
-        sections.append(f"- 審査待ち率: {len(pending_reviews) / len(pages) * 100:.1f}%" if pages else "- 審査待ち率: 0%")
+        sections.append(
+            f"- 審査待ち率: {len(pending_reviews) / len(pages) * 100:.1f}%"
+            if pages
+            else "- 審査待ち率: 0%"
+        )
 
         dashboard_content = "\n".join(sections)
         dashboard_path = self.wiki_dir / "Management Dashboard.md"
