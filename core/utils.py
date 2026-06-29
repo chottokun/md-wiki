@@ -72,11 +72,12 @@ def _migrate_legacy_frontmatter(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     if not data:
         return data
-    # abstract → description
-    if "abstract" in data and "description" not in data:
-        data["description"] = data.pop("abstract")
-    elif "abstract" in data and "description" in data:
-        data.pop("abstract")
+    # abstract/summary → description
+    for legacy_key in ["abstract", "summary"]:
+        if legacy_key in data and "description" not in data:
+            data["description"] = data.pop(legacy_key)
+        elif legacy_key in data and "description" in data:
+            data.pop(legacy_key)
     # updated → timestamp
     if "updated" in data and "timestamp" not in data:
         data["timestamp"] = data.pop("updated")
