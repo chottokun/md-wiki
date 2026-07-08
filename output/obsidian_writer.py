@@ -168,6 +168,7 @@ class ObsidianWriter:
                 e_val = base_data.get(key, [])
                 if isinstance(e_val, str):
                     e_val = [e_val]
+                combined = list(set([v for v in (e_val + p_val) if v]))
                 if combined:
                     base_data[key] = combined
             for key, val in proposed_data.items():
