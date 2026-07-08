@@ -3,6 +3,7 @@ import sys
 import re
 import argparse
 import shutil
+import concurrent.futures
 from pathlib import Path
 from core.utils import parse_frontmatter, normalize_term
 
@@ -15,47 +16,56 @@ def parse_args():
     parser.add_argument("--dir", default="wiki", help="Target source wiki directory (default: wiki)")
     return parser.parse_args()
 
+def _process_page_for_map(path: Path, wiki_dir: Path) -> dict[str, Path]:
+    """Processes a single markdown file to extract potential link keys."""
+    local_map = {}
+    rel_path = path.relative_to(wiki_dir)
+
+    # 1. Stem (filename without extension, e.g. "self_rag")
+    stem = path.stem
+    local_map[stem.lower()] = rel_path
+    local_map[stem.replace("_", " ").lower()] = rel_path
+    local_map[stem.replace("-", " ").lower()] = rel_path
+    local_map[stem.replace("_", "-").lower()] = rel_path
+    local_map[stem.replace("-", "_").lower()] = rel_path
+
+    # 2. Parse frontmatter for title and aliases
+    try:
+        content = path.read_text(encoding="utf-8")
+        meta, _ = parse_frontmatter(content)
+        if meta:
+            # Title
+            title = meta.get("title")
+            if title:
+                local_map[title.lower()] = rel_path
+                local_map[title.replace("_", " ").lower()] = rel_path
+                local_map[title.replace("-", " ").lower()] = rel_path
+            # Aliases
+            aliases = meta.get("aliases") or []
+            for alias in aliases:
+                local_map[alias.lower()] = rel_path
+                local_map[alias.replace("_", " ").lower()] = rel_path
+                local_map[alias.replace("-", " ").lower()] = rel_path
+    except Exception:
+        pass
+    return local_map
+
 def build_page_map(wiki_dir: Path) -> dict[str, Path]:
     """
     Scans the wiki folder to build a mapping from notes stems, titles,
     and aliases to their relative path within the vault.
     """
     page_map = {}
-    for path in wiki_dir.rglob("*.md"):
-        if path.name in ["index.md", "log.md"]:
-            # Standard index/logs don't represent unique linkable concepts,
-            # but we can resolve them if explicitly referenced.
-            pass
-            
-        rel_path = path.relative_to(wiki_dir)
-        
-        # 1. Stem (filename without extension, e.g. "self_rag")
-        stem = path.stem
-        page_map[stem.lower()] = rel_path
-        page_map[stem.replace("_", " ").lower()] = rel_path
-        page_map[stem.replace("-", " ").lower()] = rel_path
-        page_map[stem.replace("_", "-").lower()] = rel_path
-        page_map[stem.replace("-", "_").lower()] = rel_path
-        
-        # 2. Parse frontmatter for title and aliases
-        try:
-            content = path.read_text(encoding="utf-8")
-            meta, _ = parse_frontmatter(content)
-            if meta:
-                # Title
-                title = meta.get("title")
-                if title:
-                    page_map[title.lower()] = rel_path
-                    page_map[title.replace("_", " ").lower()] = rel_path
-                    page_map[title.replace("-", " ").lower()] = rel_path
-                # Aliases
-                aliases = meta.get("aliases") or []
-                for alias in aliases:
-                    page_map[alias.lower()] = rel_path
-                    page_map[alias.replace("_", " ").lower()] = rel_path
-                    page_map[alias.replace("-", " ").lower()] = rel_path
-        except Exception:
-            pass
+    md_files = list(wiki_dir.rglob("*.md"))
+
+    # Using ProcessPoolExecutor for CPU-bound frontmatter parsing
+    with concurrent.futures.ProcessPoolExecutor() as executor:
+        futures = {executor.submit(_process_page_for_map, path, wiki_dir): path for path in md_files}
+        for future in concurrent.futures.as_completed(futures):
+            try:
+                page_map.update(future.result())
+            except Exception:
+                pass
             
     return page_map
 
@@ -132,6 +142,39 @@ def replace_wikilinks(content: str, source_rel_path: Path, page_map: dict[str, P
     replaced_content = pattern.sub(repl, content)
     return replaced_content, count[0]
 
+def _convert_single_file(path: Path, source_dir: Path, out_dir: Path, page_map: dict[str, Path], inplace: bool) -> tuple[int, int]:
+    """Processes a single markdown file for link conversion."""
+    rel_path = path.relative_to(source_dir)
+    try:
+        content = path.read_text(encoding="utf-8")
+        converted_content, count = replace_wikilinks(content, rel_path, page_map)
+
+        if inplace:
+            dest_path = path
+        else:
+            dest_path = out_dir / rel_path
+            dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+        if count > 0:
+            with open(dest_path, "w", encoding="utf-8") as f:
+                f.write(converted_content)
+            print(f"Converted links in: {rel_path} ({count} links)")
+            return 1, count
+        else:
+            if not inplace:
+                shutil.copy2(path, dest_path)
+            return 0, 0
+    except Exception as e:
+        print(f"Error processing {rel_path}: {e}")
+        return 0, 0
+
+def _copy_other_file(path: Path, source_dir: Path, out_dir: Path):
+    """Copies a non-markdown file to the output directory."""
+    rel_path = path.relative_to(source_dir)
+    dest_path = out_dir / rel_path
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(path, dest_path)
+
 def main():
     args = parse_args()
     source_dir = Path(args.dir).resolve()
@@ -164,15 +207,19 @@ def main():
         print("\n--- Dry Run Preview ---")
         for path in md_files:
             rel_path = path.relative_to(source_dir)
-            content = path.read_text(encoding="utf-8")
-            _, count = replace_wikilinks(content, rel_path, page_map)
-            if count > 0:
-                print(f"Will modify: {rel_path} ({count} links)")
+            try:
+                content = path.read_text(encoding="utf-8")
+                _, count = replace_wikilinks(content, rel_path, page_map)
+                if count > 0:
+                    print(f"Will modify: {rel_path} ({count} links)")
+            except Exception:
+                pass
         print("\nDry run completed. No files modified.")
         return
-        
+
+    out_dir = Path(args.out_dir).resolve() if not args.inplace else None
+
     if not args.inplace:
-        out_dir = Path(args.out_dir).resolve()
         print(f"Exporting converted wiki to: {out_dir}")
         if out_dir.exists() and not args.yes:
             ans = input(f"Output directory '{out_dir}' already exists. Overwrite? (y/N): ")
@@ -187,40 +234,24 @@ def main():
                 print("Aborted.")
                 return
                 
-    # Process files
+    # Process files in parallel
     converted_count = 0
     total_links_converted = 0
     
-    for path in md_files:
-        rel_path = path.relative_to(source_dir)
-        content = path.read_text(encoding="utf-8")
-        converted_content, count = replace_wikilinks(content, rel_path, page_map)
-        
-        if args.inplace:
-            dest_path = path
-        else:
-            dest_path = out_dir / rel_path
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
-            
-        with open(dest_path, "w", encoding="utf-8") as f:
-            f.write(converted_content if count > 0 else content)
-            
-        if count > 0:
-            converted_count += 1
-            total_links_converted += count
-            print(f"Converted links in: {rel_path} ({count} links)")
-        else:
-            if not args.inplace:
-                # Still copy non-changed files to target folder
-                shutil.copy2(path, dest_path)
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(_convert_single_file, path, source_dir, out_dir, page_map, args.inplace)
+            for path in md_files
+        ]
+        for future in concurrent.futures.as_completed(futures):
+            c_count, l_count = future.result()
+            converted_count += c_count
+            total_links_converted += l_count
                 
-    # Copy other static assets (images, pdfs)
+    # Copy other static assets (images, pdfs) in parallel
     if not args.inplace:
-        for path in other_files:
-            rel_path = path.relative_to(source_dir)
-            dest_path = out_dir / rel_path
-            dest_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(path, dest_path)
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            executor.map(lambda p: _copy_other_file(p, source_dir, out_dir), other_files)
             
     print(f"\n🎉 Conversion completed!")
     print(f"Processed {len(md_files)} Markdown files.")
