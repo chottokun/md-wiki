@@ -4,7 +4,7 @@ import re
 import shutil
 import argparse
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, date
 from typing import Dict, Any, Optional
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
@@ -44,6 +44,11 @@ def _infer_type(file_path: Path, wiki_root: Path, current_type: Optional[str]) -
 
 def _format_iso_datetime(date_val: Any) -> str:
     """Try to parse old YYYY-MM-DD HH:mm or similar to ISO 8601."""
+    if isinstance(date_val, datetime):
+        return date_val.strftime("%Y-%m-%dT%H:%M:%S+09:00")
+    if isinstance(date_val, date):
+        return date_val.strftime("%Y-%m-%dT00:00:00+09:00")
+
     if not isinstance(date_val, str):
         return str(date_val)
 

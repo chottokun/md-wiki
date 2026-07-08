@@ -3,7 +3,7 @@ import re
 import json
 import concurrent.futures
 from pathlib import Path
-from typing import Dict, Any, Set
+from typing import Dict, Any
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -13,7 +13,6 @@ from core.utils import (
     normalize_term, 
     parse_frontmatter, 
     dump_frontmatter,
-    is_technical_term, 
     auto_link_concepts, 
     get_all_concepts, 
     parse_and_filter_concepts,
@@ -377,7 +376,7 @@ def draft_node(state: AgentState) -> Dict[str, Any]:
         try:
             raw_concepts = safe_get_content(llm.invoke(fallback_prompt).content)
             new_concepts = parse_and_filter_concepts(raw_concepts)
-        except Exception as e2:
+        except Exception:
             new_concepts = []
 
         found_links = list(set(WIKI_LINK_RE.findall(clean_body)))

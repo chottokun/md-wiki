@@ -40,9 +40,15 @@ def auto_rebuild():
     
     # 2. Wiki Markdownファイルのリセット（concepts等のサブディレクトリも対象）
     print("既存のWikiページを削除中...")
-    for p in wiki_dir.rglob("*.md"):
-        if p.name not in ["Home.md", "log.md"] and "raw_markdown" not in str(p) and "sources" not in str(p):
-            p.unlink()
+    for p in wiki_dir.iterdir():
+        if p.is_file():
+            if p.suffix == ".md" and p.name not in ["Home.md", "log.md"]:
+                p.unlink()
+        elif p.is_dir() and p.name not in ["raw_markdown", "sources", ".git"]:
+            # concepts等のサブディレクトリ内を再帰的に削除
+            for sub_p in p.rglob("*.md"):
+                if sub_p.name not in ["Home.md", "log.md"]:
+                    sub_p.unlink()
     
     # 3. 生Markdown抽出データとソースファイルの法のリセット
     raw_md_dir = wiki_dir / "raw_markdown"

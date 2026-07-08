@@ -74,3 +74,27 @@ def test_sync_manager_diff_injection_mitigation(temp_wiki_repo):
 
     assert "modified content" in diff
     # If it failed to treat '-v' as a path, diff would likely be empty or an error
+
+def test_sync_manager_path_traversal_mitigation(temp_wiki_repo, tmp_path):
+    wiki_dir, repo = temp_wiki_repo
+
+    # Create a secret file outside the wiki directory
+    secret_file = tmp_path / "secret_outside.txt"
+    secret_file.write_text("secret content")
+
+    sync_manager = GitSyncManager(store=MagicMock(), wiki_dir=wiki_dir)
+
+    # Mock repo.untracked_files to include a traversal path
+    with MagicMock() as mock_repo:
+        sync_manager.repo = mock_repo
+        mock_repo.git.diff.return_value = "" # No diff in git
+
+        # Test relative traversal
+        relative_traversal = "../secret_outside.txt"
+        mock_repo.untracked_files = [relative_traversal]
+        assert sync_manager.get_unstaged_diff(relative_traversal) == ""
+
+        # Test absolute traversal
+        absolute_traversal = str(secret_file.absolute())
+        mock_repo.untracked_files = [absolute_traversal]
+        assert sync_manager.get_unstaged_diff(absolute_traversal) == ""

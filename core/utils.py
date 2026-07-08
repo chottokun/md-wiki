@@ -8,6 +8,8 @@ import threading
 from collections import Counter
 from pathlib import Path
 from typing import Dict, Any, Optional, List
+from urllib.parse import urlparse
+import ipaddress
 from ruamel.yaml import YAML
 from io import StringIO
 from functools import lru_cache
@@ -22,6 +24,11 @@ def _get_yaml():
         y.indent(mapping=2, sequence=4, offset=2)
         _thread_local.yaml = y
     return _thread_local.yaml
+
+def _get_safe_yaml():
+    if not hasattr(_thread_local, "safe_yaml"):
+        _thread_local.safe_yaml = YAML(typ='safe')
+    return _thread_local.safe_yaml
 
 # 各種ハイフン・ダッシュ類を標準ハイフンに統一するための変換テーブル
 # (\u2010-\u2015, \uFE58, \uFE63, \uFF0D など)
@@ -126,7 +133,7 @@ def parse_frontmatter(content: Any) -> tuple[Optional[Dict[str, Any]], str]:
         fm_text = match.group(1)
         body = content[match.end():].strip()
         try:
-            data = _get_yaml().load(fm_text)
+            data = _get_safe_yaml().load(fm_text)
             result = dict(data) if data else {}
             return _migrate_legacy_frontmatter(result), body
         except Exception:
@@ -299,6 +306,40 @@ def extract_json_from_text(text: str) -> Optional[str]:
         
     # 2. 直接バランスしたブラケットを探す
     return _extract_balanced_json(text)
+
+def is_safe_url(url: str) -> bool:
+    """URLが安全か（SSRF対策）をチェックする。
+
+    http/httpsのみ許可し、169.254.169.254などのリンクローカル・マルチキャストアドレスを拒否する。
+    ただし、ローカルのOllama等に対応するため、localhostやループバックIPは許可する。
+    """
+    if not url:
+        return False
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+
+        if hostname == "localhost":
+            return True
+
+        try:
+            ip = ipaddress.ip_address(hostname)
+            if ip.is_loopback:
+                return True
+            if ip.is_link_local or ip.is_multicast:
+                return False
+        except ValueError:
+            # IPアドレスでない場合はドメイン名とみなす
+            pass
+
+        return True
+    except Exception:
+        return False
 
 def setup_windows_utf8():
     """
