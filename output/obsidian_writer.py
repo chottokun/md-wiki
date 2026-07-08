@@ -1,3 +1,4 @@
+import concurrent.futures
 import logging
 import os
 import re
@@ -636,10 +637,9 @@ class ObsidianWriter:
             and p.name != "Management Dashboard.md"
         ]
 
-        pending_reviews = []
         red_links_counter = find_red_links(self.wiki_dir)
 
-        for p in pages:
+        def _check_pending_review(p: Path) -> Optional[str]:
             try:
                 content = p.read_text(encoding="utf-8")
                 # 未審査タグのチェック (フロントマターまたは本文中)
@@ -647,11 +647,17 @@ class ObsidianWriter:
                     # frontmatterを厳密にチェック
                     data, _ = parse_frontmatter(content)
                     if data and "未審査" in data.get("tags", []):
-                        pending_reviews.append(p.stem)
+                        return p.stem
                     elif "#未審査" in content:
-                        pending_reviews.append(p.stem)
+                        return p.stem
             except Exception as e:
                 logger.error(f"Error processing {p} for dashboard: {e}")
+            return None
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            review_results = list(executor.map(_check_pending_review, pages))
+
+        pending_reviews = [r for r in review_results if r]
 
         # ダッシュボードの構築
         now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
