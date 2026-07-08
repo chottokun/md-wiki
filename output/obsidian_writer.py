@@ -2,14 +2,13 @@ import logging
 import os
 import re
 import shutil
-from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional
 
 from core.config import Config
 from core.schemas import WikiFrontmatterSchema, DraftConfig
-from core.utils import normalize_term, parse_frontmatter, dump_frontmatter, WIKI_LINK_RE, find_red_links
+from core.utils import normalize_term, parse_frontmatter, dump_frontmatter, find_red_links
 
 logger = logging.getLogger(__name__)
 
@@ -129,11 +128,14 @@ class ObsidianWriter:
         if proposed_data:
             for key in ["tags", "sources", "aliases", "concepts"]:
                 p_val = proposed_data.get(key, [])
-                if isinstance(p_val, str): p_val = [p_val]
+                if isinstance(p_val, str):
+                    p_val = [p_val]
                 e_val = base_data.get(key, [])
-                if isinstance(e_val, str): e_val = [e_val]
+                if isinstance(e_val, str):
+                    e_val = [e_val]
                 combined = list(set([v for v in (e_val + p_val) if v]))
-                if combined: base_data[key] = combined
+                if combined:
+                    base_data[key] = combined
             
             for key, val in proposed_data.items():
                 if key not in ["tags", "sources", "aliases", "concepts", "created", "updated"]:
@@ -167,7 +169,8 @@ class ObsidianWriter:
         
         # リンク情報の統合
         sources = merged_dict.get("sources", [])
-        if source_link: sources.append(source_link)
+        if source_link:
+            sources.append(source_link)
         merged_dict["sources"] = sorted(list(set(sources)))
 
         # スキーマによるバリデーションとデフォルト値適用
@@ -176,7 +179,8 @@ class ObsidianWriter:
             fm = WikiFrontmatterSchema.model_validate(merged_dict)
             
             # 日付とタイプの強制設定
-            if not fm.created: fm.created = now_str
+            if not fm.created:
+                fm.created = now_str
             fm.timestamp = now_str
             
             # type の動的判定
@@ -276,7 +280,8 @@ class ObsidianWriter:
         return self.create_draft_file(config)
 
     def _handle_source_file(self, filename: Optional[str], source_path: Optional[str] = None) -> Optional[str]:
-        if not filename: return None
+        if not filename:
+            return None
         sources_dir = self._get_safe_path(self.wiki_dir, "sources")
         sources_dir.mkdir(exist_ok=True)
         
@@ -300,7 +305,7 @@ class ObsidianWriter:
         if src.exists() and src.is_file():
             try:
                 shutil.copy2(src, target_path)
-                logger.info(f"  [File] Successfully copied source file.")
+                logger.info("  [File] Successfully copied source file.")
             except Exception as e:
                 logger.error(f"  [File] Failed to copy source file: {e}")
         else:
@@ -310,7 +315,8 @@ class ObsidianWriter:
         return f"[[{rel_path}]]"
 
     def _handle_raw_markdown(self, name: str, content: Optional[str]) -> Optional[str]:
-        if not content: return None
+        if not content:
+            return None
         raw_dir = self._get_safe_path(self.wiki_dir, "raw_markdown")
         raw_dir.mkdir(exist_ok=True)
 
