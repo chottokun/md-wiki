@@ -1,0 +1,77 @@
+diff --git a/tests/test_okf_lint.py b/tests/test_okf_lint.py
+index c656b2b..996f777 100644
+--- a/tests/test_okf_lint.py
++++ b/tests/test_okf_lint.py
+@@ -1,4 +1,5 @@
+ from __future__ import annotations
++from unittest.mock import patch
+ import pytest
+ from pathlib import Path
+ from okf_lint import lint_wiki
+@@ -202,3 +203,66 @@ def test_lint_wiki_full_conformant(tmp_path):
+     log_file.write_text("# Log\n## 2024-01-01\nInitial entry.", encoding="utf-8")
+ 
+     assert lint_wiki(str(wiki_dir)) is True
++
++def test_lint_wiki_nested_directories(tmp_path, capsys):
++    """Verify that rglob correctly identifies files in nested subdirectories."""
++    wiki_dir = tmp_path / "wiki"
++    wiki_dir.mkdir()
++
++    # Nested concept doc
++    subdir = wiki_dir / "nested" / "category"
++    subdir.mkdir(parents=True)
++    doc = subdir / "concept.md"
++    doc.write_text("---\ntype: concept\ndescription: Nested\ntimestamp: 2024-01-01\n---\n# Content", encoding="utf-8")
++
++    # Nested index.md
++    nested_index = subdir / "index.md"
++    nested_index.write_text("# Nested Index", encoding="utf-8")
++
++    assert lint_wiki(str(wiki_dir)) is True
++    captured = capsys.readouterr()
++    assert "Total concept documents found: 1" in captured.out
++    assert "index.md files conformant: 1/1" in captured.out
++
++def test_lint_wiki_warning_truncation(tmp_path, capsys):
++    """Create more than 20 warnings and verify the '... and X more warnings' message."""
++    wiki_dir = tmp_path / "wiki"
++    wiki_dir.mkdir()
++
++    # Create 25 documents with missing descriptions (warnings)
++    for i in range(25):
++        doc = wiki_dir / f"doc_{i}.md"
++        doc.write_text(f"---\ntype: concept\ntimestamp: 2024-01-01\n---\n# Content {i}", encoding="utf-8")
++
++    assert lint_wiki(str(wiki_dir)) is True
++    captured = capsys.readouterr()
++    assert "--- Recommendations / Warnings ---" in captured.out
++    assert "... and 5 more warnings." in captured.out
++
++def test_lint_wiki_error_truncation(tmp_path, capsys):
++    """Create more than 20 errors and verify the '... and X more errors' message."""
++    wiki_dir = tmp_path / "wiki"
++    wiki_dir.mkdir()
++
++    # Create 25 documents with missing frontmatter (errors)
++    for i in range(25):
++        doc = wiki_dir / f"error_{i}.md"
++        doc.write_text(f"# No frontmatter here {i}", encoding="utf-8")
++
++    assert lint_wiki(str(wiki_dir)) is False
++    captured = capsys.readouterr()
++    assert "--- Conformance Errors ---" in captured.out
++    assert "... and 5 more errors." in captured.out
++
++def test_lint_wiki_read_exception(tmp_path, capsys):
++    """Trigger the except Exception block by mocking read_text to fail."""
++    wiki_dir = tmp_path / "wiki"
++    wiki_dir.mkdir()
++    doc = wiki_dir / "broken.md"
++    doc.write_text("---\ntype: concept\n---\nBody", encoding="utf-8")
++
++    with patch.object(Path, 'read_text', side_effect=Exception("Simulated read error")):
++        assert lint_wiki(str(wiki_dir)) is False
++
++    captured = capsys.readouterr()
++    assert "Failed to read/parse: Simulated read error" in captured.out
