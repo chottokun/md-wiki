@@ -1,0 +1,141 @@
+diff --git a/agent/graph.py b/agent/graph.py
+index 490db51..bc50b76 100644
+--- a/agent/graph.py
++++ b/agent/graph.py
+@@ -93,20 +93,13 @@ def ingest_node(state: AgentState) -> Dict[str, Any]:
+ 
+ 
+ 
+-def _fetch_context(term: str, llm) -> tuple[str, list, list]:
+-    search_query = term
+-    store = get_qdrant_store()
+-    evidences = [d for d in store.search(search_query, k=10) if d.metadata.get("type") in ["raw_source", "raw_markdown", "wiki_page"]]
+-    def evidence_priority(d):
+-        text = d.page_content
+-        return 0 if re.search(r'[ぁ-んァ-ヶ亜-熙]', text) else 1
+-    evidences = sorted(evidences, key=evidence_priority)
++def _evidence_priority(d) -> int:
++    """日本語を含むエビデンスを優先する。"""
++    text = d.page_content
++    return 0 if re.search(r'[ぁ-んァ-ヶ亜-熙]', text) else 1
+ 
+-    if (not evidences or evidence_priority(evidences[0]) == 1) and re.search(r'[ぁ-んァ-ヶ亜-熙]', term):
+-        translation_prompt = get_translation_prompt(term)
+-        english_term = llm.invoke(translation_prompt).content.strip()
+-        logger.info(f"日本語用語 '{term}' を '{english_term}' として再検索します")
+-        evidences = [d for d in store.search(english_term, k=8) if d.metadata.get("type") == "raw_source"]
++def _process_evidences(term: str, evidences: list) -> tuple[str, list, list]:
++    evidences = sorted(evidences, key=_evidence_priority)
+ 
+     if evidences:
+         sources = list(set([d.metadata.get('source') for d in evidences if d.metadata.get('source')]))
+@@ -118,6 +111,21 @@ def evidence_priority(d):
+         context = f"No specific context found in Qdrant. Please generate a stub page using your internal knowledge about '{term}'."
+     return context, sources, source_links
+ 
++def _fetch_context(term: str, llm) -> tuple[str, list, list]:
++    search_query = term
++    store = get_qdrant_store()
++    evidences = [d for d in store.search(search_query, k=10) if d.metadata.get("type") in ["raw_source", "raw_markdown", "wiki_page"]]
++
++    evidences = sorted(evidences, key=_evidence_priority)
++
++    if (not evidences or _evidence_priority(evidences[0]) == 1) and re.search(r'[ぁ-んァ-ヶ亜-熙]', term):
++        translation_prompt = get_translation_prompt(term)
++        english_term = llm.invoke(translation_prompt).content.strip()
++        logger.info(f"日本語用語 '{term}' を '{english_term}' として再検索します")
++        evidences = [d for d in store.search(english_term, k=8) if d.metadata.get("type") == "raw_source"]
++
++    return _process_evidences(term, evidences)
++
+ def _generate_stub_data(term: str, context: str, source_links: list, evidences: list, llm) -> dict:
+     body_prompt = get_lint_body_prompt(term, context)
+     body_text = llm.invoke(body_prompt).content
+@@ -198,11 +206,55 @@ def lint_node(state: AgentState) -> Dict[str, Any]:
+     if not targets:
+         return {"status": "linted"}
+ 
++    store = get_qdrant_store()
++
++    # 初回のコンテキスト取得をバッチ実行
++    batch_results = store.search_batch(targets, k=10)
++    term_to_context = {}
++
++    # 二次検索（翻訳が必要な日本語用語）が必要な用語を特定
++    needs_second_search = []
++
++    for term, evidences in zip(targets, batch_results):
++        evidences = [d for d in evidences if d.metadata.get("type") in ["raw_source", "raw_markdown", "wiki_page"]]
++        evidences = sorted(evidences, key=_evidence_priority)
++
++        if (not evidences or _evidence_priority(evidences[0]) == 1) and re.search(r'[ぁ-んァ-ヶ亜-熙]', term):
++            needs_second_search.append(term)
++        else:
++            # _process_evidences 内でもソートされるが、ここでは既にソート済み
++            term_to_context[term] = _process_evidences(term, evidences)
++
++    # 日本語用語の翻訳と再検索をバッチ処理
++    if needs_second_search:
++        logger.info(f"🔍 {len(needs_second_search)} 個の日本語用語について翻訳と再検索を実行します")
++
++        def translate_term(term):
++            translation_prompt = get_translation_prompt(term)
++            english_term = llm.invoke(translation_prompt).content.strip()
++            return term, english_term
++
++        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
++            translations = dict(list(executor.map(translate_term, needs_second_search)))
++
++        english_terms = [translations[t] for t in needs_second_search]
++        second_batch_results = store.search_batch(english_terms, k=8)
++
++        for term, evidences in zip(needs_second_search, second_batch_results):
++            evidences = [d for d in evidences if d.metadata.get("type") == "raw_source"]
++            term_to_context[term] = _process_evidences(term, evidences)
++
+     def _process_term(term):
+         try:
+             frequency = red_links_dict.get(term, 0)
+             logger.info(f"🔍 Generating stub for: {term} (mentions: {frequency})")
+-            context, sources, source_links = _fetch_context(term, llm)
++
++            context_data = term_to_context.get(term)
++            if not context_data:
++                # 万が一バッチから漏れた場合のフォールバック
++                context_data = _fetch_context(term, llm)
++
++            context, sources, source_links = context_data
+             data = _generate_stub_data(term, context, source_links, [], llm)
+             # スタブ作成
+             writer.create_draft_from_schema(data, sub_dir="concepts")
+@@ -211,7 +263,7 @@ def _process_term(term):
+             logger.error(f"Error generating stub for {term}: {e}")
+             return False
+ 
+-    # スレッドプールを使用して並列処理 (I/OバウンドなLLM/Qdrant呼び出しを高速化)
++    # スレッドプールを使用して並列処理 (I/OバウンドなLLM呼び出しを高速化)
+     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+         list(executor.map(_process_term, targets))
+     
+diff --git a/retrieval/qdrant_store.py b/retrieval/qdrant_store.py
+index 52b6175..b388c95 100644
+--- a/retrieval/qdrant_store.py
++++ b/retrieval/qdrant_store.py
+@@ -130,6 +130,17 @@ def add_documents(self, documents: List[Document], batch_size: int = 100):
+     def search(self, query: str, k: int = 5) -> List[Document]:
+         return self.vector_store.similarity_search(query, k=k)
+ 
++    def search_batch(self, queries: List[str], k: int = 5) -> List[List[Document]]:
++        """複数のクエリを並列に実行する。"""
++        if not queries:
++            return []
++
++        # QdrantClient の query_batch が利用可能な場合はそれを使用することも検討できるが、
++        # langchain-qdrant の similarity_search が提供するハイブリッド検索ロジックを
++        # 維持するため、ここでは ThreadPoolExecutor を使用して並列化する。
++        with ThreadPoolExecutor(max_workers=min(len(queries), 20)) as executor:
++            return list(executor.map(lambda q: self.search(q, k=k), queries))
++
+     def sync_from_disk(self, include_unreviewed: Optional[bool] = None, wiki_dir: Optional[str] = None, raw_md_dir: Optional[str] = None):
+         """ディスク上の全Wikiファイルを再スキャンしてQdrantを再構築する。"""
+         if include_unreviewed is None:
