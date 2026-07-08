@@ -57,7 +57,8 @@ class TestLLMRouterGetModel(unittest.TestCase):
     def test_gemini_provider_defaults(self):
         env = {
             "LLM_PROVIDER": "gemini",
-            "GEMINI_API_KEY": "gemini-key"
+            "GEMINI_API_KEY": "gemini-key",
+            "GEMINI_MODEL": ""
         }
         with patch.dict(os.environ, env):
             router = LLMRouter()
