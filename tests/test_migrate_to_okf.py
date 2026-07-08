@@ -5,6 +5,7 @@ import tempfile
 import io
 import argparse
 from pathlib import Path
+from datetime import datetime, date
 from unittest.mock import patch
 from migrate_to_okf import (
     migrate_frontmatter_and_content,
@@ -128,6 +129,21 @@ created: "2023-01-01 12:00"
         self.assertEqual(data["timestamp"], "2023-10-27T00:00:00+09:00")
         self.assertEqual(data["created"], "2023-01-01T12:00:00+09:00")
 
+    def test_unquoted_date_handling(self):
+        """YAML parsers often load unquoted YYYY-MM-DD as datetime.date objects."""
+        file_path = self.wiki_root / "unquoted.md"
+        content = """---
+updated: 2023-10-27
+---
+# Unquoted Date"""
+        file_path.write_text(content, encoding="utf-8")
+
+        migrate_frontmatter_and_content(file_path, self.wiki_root, dry_run=False)
+
+        data, _ = parse_frontmatter(file_path.read_text(encoding="utf-8"))
+        # Should be converted to ISO string by migrate_frontmatter_and_content
+        self.assertEqual(data["timestamp"], "2023-10-27T00:00:00+09:00")
+
     @patch('sys.stdout', new_callable=io.StringIO)
     def test_migrate_frontmatter_and_content_read_error(self, mock_stdout):
         """
@@ -210,11 +226,19 @@ created: "2023-01-01 12:00"
         # YYYY-MM-DD
         self.assertEqual(_format_iso_datetime("2023-10-27"), "2023-10-27T00:00:00+09:00")
 
+        # datetime object
+        dt = datetime(2023, 10, 27, 10, 0)
+        self.assertEqual(_format_iso_datetime(dt), "2023-10-27T10:00:00+09:00")
+
+        # date object
+        d = date(2023, 10, 27)
+        self.assertEqual(_format_iso_datetime(d), "2023-10-27T00:00:00+09:00")
+
         # Already ISO (or invalid for the custom parser, should return as is)
         self.assertEqual(_format_iso_datetime("2023-10-27T10:00:00+09:00"), "2023-10-27T10:00:00+09:00")
         self.assertEqual(_format_iso_datetime("Not a date"), "Not a date")
 
-        # Non-string input
+        # Non-string input (that is not date/datetime)
         self.assertEqual(_format_iso_datetime(12345), "12345")
 
     def test_migrate_log_file(self):
