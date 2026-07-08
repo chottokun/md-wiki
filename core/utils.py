@@ -298,7 +298,7 @@ def extract_json_from_text(text: str) -> Optional[str]:
         
     # 1. ```json ... ``` の抽出
     # ブロックを見つけてから、その中をバランスチェックする
-    json_block_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+    json_block_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
     if json_block_match:
         inner = json_block_match.group(1)
         result = _extract_balanced_json(inner)
