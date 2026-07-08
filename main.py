@@ -1,4 +1,3 @@
-import sys
 import uuid
 import logging
 import argparse
@@ -33,7 +32,7 @@ def run_workflow(input_data: Dict[str, Any], auto_approve: bool = False):
     thread_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": thread_id}}
     
-    print(f"\n[Workflow] Starting...")
+    print("\n[Workflow] Starting...")
 
     # 1. 最初の実行 (中断点まで)
     current_state = None
