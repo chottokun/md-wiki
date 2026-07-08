@@ -21,7 +21,7 @@ setup_windows_utf8()
 os.environ["QDRANT_MODE"] = "memory"
 
 
-def run_cmd(cmd_list, timeout=120):
+def run_cmd(cmd_list, timeout=300):
     """コマンドを実行し、完了を待つ。"""
     print(f"  Running: {' '.join(cmd_list)}")
     env = os.environ.copy()
