@@ -13,7 +13,6 @@ from core.utils import (
     normalize_term, 
     parse_frontmatter, 
     dump_frontmatter,
-    is_technical_term, 
     auto_link_concepts, 
     get_all_concepts, 
     parse_and_filter_concepts,
