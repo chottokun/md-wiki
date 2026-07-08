@@ -11,7 +11,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest_models
 from core.config import Config
-from core.utils import parse_frontmatter
+from core.utils import parse_frontmatter, is_safe_url
 
 # ロギング設定
 logger = logging.getLogger(__name__)
@@ -48,9 +48,9 @@ class QdrantHybridStore:
         import urllib.request
         ollama_running = False
         ollama_url = os.getenv("LOCALLLM_BASE_URL", "http://localhost:11434")
-        if ollama_url.startswith(("http://", "https://")):
+        if is_safe_url(ollama_url):
             try:
-                with urllib.request.urlopen(ollama_url, timeout=1.0) as response:  # nosec B310
+                with urllib.request.urlopen(ollama_url, timeout=1.0) as response:
                     if response.status == 200:
                         ollama_running = True
             except Exception:  # nosec B110
