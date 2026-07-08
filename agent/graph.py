@@ -376,7 +376,7 @@ def draft_node(state: AgentState) -> Dict[str, Any]:
         try:
             raw_concepts = safe_get_content(llm.invoke(fallback_prompt).content)
             new_concepts = parse_and_filter_concepts(raw_concepts)
-        except Exception as e2:
+        except Exception:
             new_concepts = []
 
         found_links = list(set(WIKI_LINK_RE.findall(clean_body)))
