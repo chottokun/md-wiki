@@ -46,5 +46,26 @@ class TestLLMRouter(unittest.TestCase):
             model = router.get_model(LLMLayer.L1)
             self.assertIsInstance(model, ChatGoogleGenerativeAI)
 
+    def test_get_language_instruction_default(self):
+        # TARGET_LANGUAGE が設定されていない場合（デフォルトは Japanese）
+        with patch.dict(os.environ, {}, clear=True):
+            router = LLMRouter()
+            instruction = router.get_language_instruction()
+            self.assertEqual(instruction, "必ずJapaneseで回答・出力してください。")
+
+    def test_get_language_instruction_custom_en(self):
+        # TARGET_LANGUAGE が English の場合
+        with patch.dict(os.environ, {"TARGET_LANGUAGE": "English"}):
+            router = LLMRouter()
+            instruction = router.get_language_instruction()
+            self.assertEqual(instruction, "必ずEnglishで回答・出力してください。")
+
+    def test_get_language_instruction_custom_jp(self):
+        # TARGET_LANGUAGE が 日本語 の場合
+        with patch.dict(os.environ, {"TARGET_LANGUAGE": "日本語"}):
+            router = LLMRouter()
+            instruction = router.get_language_instruction()
+            self.assertEqual(instruction, "必ず日本語で回答・出力してください。")
+
 if __name__ == '__main__':
     unittest.main()
