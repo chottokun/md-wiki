@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_ollama import ChatOllama
 from langchain_core.language_models.chat_models import BaseChatModel
+from core.utils import is_safe_url
 
 load_dotenv()
 
@@ -71,9 +72,13 @@ class LLMRouter:
         }
         
         # RTX 3060 12GB等の環境でモデルを動的に入れ替えるための設定
+        base_url = os.getenv("LOCALLLM_BASE_URL", "http://localhost:11434")
+        if not is_safe_url(base_url):
+            raise ValueError(f"Insecure LOCALLLM_BASE_URL: {base_url}")
+
         base_kwargs = {
             "model": model_map[layer],
-            "base_url": os.getenv("LOCALLLM_BASE_URL", "http://localhost:11434"),
+            "base_url": base_url,
             "keep_alive": "0" # 推論直後にVRAMを開放
         }
         base_kwargs.update(kwargs)
