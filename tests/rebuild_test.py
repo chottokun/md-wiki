@@ -150,13 +150,14 @@ def _verify_wiki_quality(wiki_dir: Path) -> tuple[list[str], list[str]]:
     errors = []
     warnings = []
 
-    # 4a. Home.md の存在確認
-    if not (wiki_dir / "Home.md").exists():
-        errors.append("Home.md が生成されていません")
+    # 4a. index.md の存在確認
+    if not (wiki_dir / "index.md").exists():
+        errors.append("index.md が生成されていません")
 
     # 4b. Wiki 直下のページ確認
     wiki_pages = [
-        p for p in wiki_dir.glob("*.md") if p.name not in ("Home.md", "log.md")
+        p for p in wiki_dir.glob("*.md")
+        if p.name not in ("Home.md", "log.md", "index.md", "Management Dashboard.md")
     ]
 
     print(f"  Wiki直下のページ: {[p.name for p in wiki_pages]}")
