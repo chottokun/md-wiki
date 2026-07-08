@@ -55,3 +55,77 @@ def test_extract_json_complex_nesting():
     text = "Text { \"a\": { \"b\": [1, 2], \"c\": { \"d\": 3 } } } extra"
     expected = "{ \"a\": { \"b\": [1, 2], \"c\": { \"d\": 3 } } }"
     assert extract_json_from_text(text) == expected
+
+def test_extract_json_uppercase_block():
+    """
+    Verify that ```JSON block is handled.
+    The regex is case-insensitive for 'json', so it should extract it correctly.
+    """
+    text = "```JSON\n{\"a\": 1}\n```"
+    expected = "{\"a\": 1}"
+    assert extract_json_from_text(text) == expected
+
+def test_extract_json_uppercase_block_with_extra_outside():
+    """
+    Verify that ```JSON (uppercase) matches the regex (with IGNORECASE)
+    and succeeds even if the whole text is unbalanced.
+    """
+    text = "```JSON\n{\"a\": 1}\n```\nExtra {"
+    # Regex matches with IGNORECASE, inner is {"a": 1}, which is balanced.
+    assert extract_json_from_text(text) == "{\"a\": 1}"
+
+def test_extract_json_lowercase_block_with_extra_outside():
+    """
+    This test demonstrates that ```json (lowercase) DOES match the regex,
+    so it succeeds even if the whole text is unbalanced.
+    """
+    text = "```json\n{\"a\": 1}\n```\nExtra {"
+    # Regex matches, inner is {"a": 1}, which is balanced.
+    assert extract_json_from_text(text) == "{\"a\": 1}"
+
+def test_extract_json_no_prefix_block():
+    """Verify that code block without 'json' prefix is handled."""
+    text = "```\n{\"a\": 1}\n```"
+    expected = "{\"a\": 1}"
+    assert extract_json_from_text(text) == expected
+
+def test_extract_json_surrounding_text_in_block():
+    """Verify that text inside code block but outside JSON is handled."""
+    text = "```json\nExplanation before\n{\"a\": 1}\nExplanation after\n```"
+    expected = "{\"a\": 1}"
+    assert extract_json_from_text(text) == expected
+
+def test_extract_json_unbalanced_in_block_fallback():
+    """
+    Verify that if the first code block has unbalanced JSON,
+    it falls back to searching the entire text.
+    """
+    text = "```json\n{ unbalanced\n```\nBut here is valid: {\"a\": 1}"
+    # The code block has { unbalanced (count { is 1, count } is 0)
+    # _extract_balanced_json(inner) returns None because count mismatch
+    # Then it calls _extract_balanced_json(text)
+    # count { in text is 2, count } in text is 1. Still unbalanced!
+    # Wait, if the whole text is unbalanced, it returns None.
+    assert extract_json_from_text(text) is None
+
+def test_extract_json_balanced_in_block_unbalanced_text():
+    """
+    If the block is balanced, it should return it even if the whole text is not
+    (though _extract_balanced_json checks count in the text passed to it).
+    """
+    text = "```json\n{\"a\": 1}\n```\nExtra }"
+    # inner = "{\"a\": 1}" -> count { is 1, count } is 1. Balanced. Returns it.
+    assert extract_json_from_text(text) == "{\"a\": 1}"
+
+def test_extract_json_multiple_blocks_first_not_json():
+    """
+    Verify behavior when multiple code blocks are present and the first one doesn't contain JSON.
+    """
+    text = "```text\nhello\n```\n```json\n{\"a\": 1}\n```"
+    # Current implementation:
+    # 1. Matches first block (```text\nhello\n```)
+    # 2. inner = "text\nhello"
+    # 3. _extract_balanced_json(inner) -> None
+    # 4. returns _extract_balanced_json(text)
+    # _extract_balanced_json(text) -> finds first { which is in the second block.
+    assert extract_json_from_text(text) == "{\"a\": 1}"
