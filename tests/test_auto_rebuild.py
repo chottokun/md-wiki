@@ -56,21 +56,41 @@ def test_auto_rebuild_flow(mock_deps):
     # Configure wiki pages for deletion
     page1 = MagicMock()
     page1.name = "Page1.md"
+    page1.suffix = ".md"
+    page1.is_file.return_value = True
+    page1.is_dir.return_value = False
     page1.__str__.return_value = "wiki/Page1.md"
 
     home_md = MagicMock()
     home_md.name = "Home.md"
+    home_md.suffix = ".md"
+    home_md.is_file.return_value = True
+    home_md.is_dir.return_value = False
     home_md.__str__.return_value = "wiki/Home.md"
 
     log_md = MagicMock()
     log_md.name = "log.md"
+    log_md.suffix = ".md"
+    log_md.is_file.return_value = True
+    log_md.is_dir.return_value = False
     log_md.__str__.return_value = "wiki/log.md"
 
     raw_md_file = MagicMock()
     raw_md_file.name = "extra.md"
     raw_md_file.__str__.return_value = "wiki/raw_markdown/extra.md"
 
-    mock_wiki_dir.rglob.return_value = [page1, home_md, log_md, raw_md_file]
+    # Add a mock directory to test recursive deletion
+    concepts_dir = MagicMock()
+    concepts_dir.name = "concepts"
+    concepts_dir.is_file.return_value = False
+    concepts_dir.is_dir.return_value = True
+
+    concept_page = MagicMock()
+    concept_page.name = "Concept.md"
+    concepts_dir.rglob.return_value = [concept_page]
+
+    mock_wiki_dir.rglob.return_value = [page1, home_md, log_md, raw_md_file, concept_page]
+    mock_wiki_dir.iterdir.return_value = [page1, home_md, log_md, concepts_dir]
 
     # Configure subdirectories and their contents
     mock_wiki_dir.__truediv__.side_effect = lambda x: {
@@ -103,6 +123,7 @@ def test_auto_rebuild_flow(mock_deps):
 
     # 2. Wiki cleanup
     page1.unlink.assert_called_once()
+    concept_page.unlink.assert_called_once()
     home_md.unlink.assert_not_called()
     log_md.unlink.assert_not_called()
     # raw_md_file should NOT be unlinked in rglob loop due to "raw_markdown" in str(p)
