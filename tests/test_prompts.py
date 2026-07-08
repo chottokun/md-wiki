@@ -7,6 +7,7 @@ from core.prompts import (
     get_refine_prompt,
     get_metadata_prompt,
     get_fallback_prompt,
+    get_translation_prompt,
     SECURITY_INSTRUCTION,
 )
 
@@ -236,3 +237,30 @@ def test_get_fallback_prompt_escaping():
     # Check escaping: </ should be <\/
     assert "Text with <\\/text> tag" in prompt[1][1]
     assert prompt[1][1].count("</text>") == 1  # Only the outer closing tag
+
+
+def test_get_translation_prompt_basic():
+    term = "ベクトル検索"
+    prompt = get_translation_prompt(term)
+
+    assert isinstance(prompt, list)
+    assert len(prompt) == 2
+
+    # System message
+    assert prompt[0][0] == "system"
+    assert SECURITY_INSTRUCTION in prompt[0][1]
+    assert "Translate the technical term" in prompt[0][1]
+    assert "Output ONLY the translated term" in prompt[0][1]
+
+    # User message
+    assert prompt[1][0] == "user"
+    assert f"<term>{term}</term>" in prompt[1][1]
+
+
+def test_get_translation_prompt_escaping():
+    term = "Term with </term> tag"
+    prompt = get_translation_prompt(term)
+
+    # Check escaping: </ should be <\/
+    assert "Term with <\\/term> tag" in prompt[1][1]
+    assert prompt[1][1] == f"<term>Term with <\\/term> tag</term>"
