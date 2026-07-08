@@ -17,7 +17,7 @@ class GitSyncManager:
     
     def __init__(self, store: QdrantHybridStore, wiki_dir: Path = None):
         self.store = store
-        self.wiki_dir = wiki_dir.absolute() if wiki_dir else Config.WIKI_DIR.absolute()
+        self.wiki_dir = (wiki_dir if wiki_dir else Config.WIKI_DIR).resolve()
         self.repo = git.Repo(self.wiki_dir, search_parent_directories=True)
         # 同期状態ファイル
         self.state_file = self.wiki_dir / ".md-wiki-sync-state"
@@ -66,12 +66,15 @@ class GitSyncManager:
                 if d.b_path: changed_paths.add(d.b_path)
 
             def _check_file(line: str) -> Optional[Path]:
-                full_path = self.wiki_dir / line
+                full_path = (self.wiki_dir / line).resolve()
+                if not full_path.is_relative_to(self.wiki_dir):
+                    return None
+
                 if full_path.suffix == ".md" and full_path.exists():
                     # 特殊ファイルは除外
                     if any(x in full_path.name for x in [".md-wiki-sync-state", "Home.md", "log.md"]):
                         return None
-                    return full_path.absolute()
+                    return full_path
                 return None
 
             with ThreadPoolExecutor() as executor:
@@ -178,8 +181,8 @@ class GitSyncManager:
             # (Git管理下になければ diff は空になるため)
             if file_path in self.repo.untracked_files:
                 # 新規ファイルの場合は内容をそのまま返す
-                full_path = self.wiki_dir / file_path
-                if full_path.exists():
+                full_path = (self.wiki_dir / file_path).resolve()
+                if full_path.is_relative_to(self.wiki_dir) and full_path.exists():
                     return full_path.read_text(encoding="utf-8")
                 
             return ""

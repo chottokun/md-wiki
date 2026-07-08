@@ -2,7 +2,6 @@ import logging
 import os
 import re
 import shutil
-from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -168,10 +167,8 @@ class ObsidianWriter:
                 e_val = base_data.get(key, [])
                 if isinstance(e_val, str):
                     e_val = [e_val]
-                combined = list(set([v for v in (e_val + p_val) if v]))
                 if combined:
                     base_data[key] = combined
-
             for key, val in proposed_data.items():
                 if key not in [
                     "tags",
@@ -421,7 +418,7 @@ class ObsidianWriter:
         if src.exists() and src.is_file():
             try:
                 shutil.copy2(src, target_path)
-                logger.info(f"  [File] Successfully copied source file.")
+                logger.info("  [File] Successfully copied source file.")
             except Exception as e:
                 logger.error(f"  [File] Failed to copy source file: {e}")
         else:
