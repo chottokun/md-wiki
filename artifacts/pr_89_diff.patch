@@ -1,0 +1,181 @@
+diff --git a/core/git_utils.py b/core/git_utils.py
+index e42e38e..aa74ec0 100644
+--- a/core/git_utils.py
++++ b/core/git_utils.py
+@@ -22,7 +22,7 @@ def run_git_commit(message: str):
+ 
+         repo.git.add(all=True)
+         if repo.is_dirty() or repo.untracked_files:
+-            repo.git.commit("-m", message)
++            repo.git.commit(f"--message={message}", "--")
+             logger.info(f"Git Commit: {message}")
+     except Exception as e:
+         logger.error(f"Wikiへの自動コミットに失敗しました: {e}", exc_info=True)
+diff --git a/file b/file
+new file mode 100644
+index 0000000..6c5b286
+--- /dev/null
++++ b/file
+@@ -0,0 +1 @@
++test_final
+diff --git a/retrieval/sync_manager.py b/retrieval/sync_manager.py
+index 03cb976..697cf40 100644
+--- a/retrieval/sync_manager.py
++++ b/retrieval/sync_manager.py
+@@ -161,7 +161,7 @@ def get_unstaged_diff(self, file_path: str) -> str:
+         """
+         try:
+             # 1. まずはHEADとの差分を確認
+-            diff_text = self.repo.git.diff('HEAD', file_path)
++            diff_text = self.repo.git.diff('HEAD', '--', file_path)
+             if diff_text.strip():
+                 return diff_text.strip()
+             
+diff --git a/tests/test_git_utils.py b/tests/test_git_utils.py
+index b1db6d1..5113b35 100644
+--- a/tests/test_git_utils.py
++++ b/tests/test_git_utils.py
+@@ -26,7 +26,7 @@ def test_successful_commit(self, mock_logger, mock_repo_class):
+ 
+         # Verify
+         mock_repo.git.add.assert_called_once_with(all=True)
+-        mock_repo.git.commit.assert_called_once_with("-m", "Test message")
++        mock_repo.git.commit.assert_called_once_with("--message=Test message", "--")
+         mock_logger.info.assert_called_with("Git Commit: Test message")
+ 
+     @patch("core.git_utils.git.Repo")
+@@ -58,7 +58,7 @@ def test_untracked_files_trigger_commit(self, mock_logger, mock_repo_class):
+         run_git_commit("Test message")
+ 
+         # Verify
+-        mock_repo.git.commit.assert_called_once_with("-m", "Test message")
++        mock_repo.git.commit.assert_called_once_with("--message=Test message", "--")
+ 
+     @patch("core.git_utils.git.Repo")
+     @patch("core.git_utils.logger")
+diff --git a/tests/test_pr22_changes.py b/tests/test_pr22_changes.py
+index 4bedd75..b9c30c6 100644
+--- a/tests/test_pr22_changes.py
++++ b/tests/test_pr22_changes.py
+@@ -119,7 +119,7 @@ def test_git_commit_logic_with_temp_repo(tmp_path):
+     # Logic from main.py
+     repo.git.add(all=True)
+     if repo.is_dirty() or repo.untracked_files:
+-        repo.git.commit("-m", "test commit")
++        repo.git.commit("--message=test commit", "--")
+         
+     assert not repo.is_dirty()
+     
+@@ -133,7 +133,7 @@ def test_git_commit_logic_with_temp_repo(tmp_path):
+     # After add, it's no longer untracked but it IS dirty (staged changes)
+     assert repo.is_dirty()
+     if repo.is_dirty() or repo.untracked_files:
+-        repo.git.commit("-m", "test commit 2")
++        repo.git.commit("--message=test commit 2", "--")
+         
+     assert not repo.is_dirty()
+ 
+diff --git a/tests/test_refine_logic.py b/tests/test_refine_logic.py
+index df2fc4a..1a80c94 100644
+--- a/tests/test_refine_logic.py
++++ b/tests/test_refine_logic.py
+@@ -14,13 +14,15 @@ class TestRefineLogic(unittest.TestCase):
+     @patch('git.Repo')
+     def test_extract_unstaged_diff(self, mock_repo):
+         """unstagedな変更をgit diffで正しく抽出できるか。"""
+-        # Repo().git.diff('HEAD', 'Page.md') の戻り値を設定
+-        mock_repo.return_value.git.diff.return_value = "--- a/wiki/Page.md\n+++ b/wiki/Page.md\n@@ -1,2 +1,2 @@\n-Old info\n+New factual info"
++        # Repo().git.diff('HEAD', '--', 'Page.md') の戻り値を設定
++        mock_git = mock_repo.return_value.git
++        mock_git.diff.return_value = "--- a/wiki/Page.md\n+++ b/wiki/Page.md\n@@ -1,2 +1,2 @@\n-Old info\n+New factual info"
+         
+         mgr = GitSyncManager(store=MagicMock())
+         diff = mgr.get_unstaged_diff("Page.md")
+         
+         # 3. 検証
++        mock_git.diff.assert_called_once_with('HEAD', '--', 'Page.md')
+         assert "New factual info" in diff
+         assert "+New factual info" in diff
+ 
+diff --git a/tests/test_security_git.py b/tests/test_security_git.py
+new file mode 100644
+index 0000000..08af9ab
+--- /dev/null
++++ b/tests/test_security_git.py
+@@ -0,0 +1,76 @@
++import pytest
++import os
++import shutil
++from pathlib import Path
++from core.git_utils import run_git_commit
++from core.config import Config
++from retrieval.sync_manager import GitSyncManager
++from unittest.mock import MagicMock
++import git
++
++@pytest.fixture
++def temp_wiki_repo(tmp_path):
++    wiki_dir = tmp_path / "wiki"
++    wiki_dir.mkdir()
++    repo = git.Repo.init(wiki_dir)
++    repo.config_writer().set_value("user", "name", "Security Tester").release()
++    repo.config_writer().set_value("user", "email", "security@example.com").release()
++
++    # Initial commit to have HEAD
++    init_file = wiki_dir / "init.md"
++    init_file.write_text("initial")
++    repo.git.add(all=True)
++    repo.index.commit("initial commit")
++
++    old_wiki_dir = Config.WIKI_DIR
++    Config.WIKI_DIR = wiki_dir
++    yield wiki_dir, repo
++    Config.WIKI_DIR = old_wiki_dir
++
++def test_run_git_commit_injection_mitigation(temp_wiki_repo):
++    wiki_dir, repo = temp_wiki_repo
++
++    # Message that looks like an option
++    injection_message = "--help"
++
++    # Modify a file
++    (wiki_dir / "init.md").write_text("changed")
++
++    # Should commit literally and NOT trigger help (which might raise or just not commit)
++    run_git_commit(injection_message)
++
++    # Verify the last commit message is literally "--help"
++    last_msg = repo.git.log("-1", "--format=%s")
++    assert last_msg == injection_message
++
++def test_run_git_commit_dash_v_mitigation(temp_wiki_repo):
++    wiki_dir, repo = temp_wiki_repo
++
++    injection_message = "-v"
++    (wiki_dir / "init.md").write_text("changed again")
++
++    run_git_commit(injection_message)
++
++    last_msg = repo.git.log("-1", "--format=%s")
++    assert last_msg == injection_message
++
++def test_sync_manager_diff_injection_mitigation(temp_wiki_repo):
++    wiki_dir, repo = temp_wiki_repo
++
++    # File name that looks like an option
++    dangerous_file = "-v"
++    full_path = wiki_dir / dangerous_file
++    full_path.write_text("some content")
++
++    repo.git.add(all=True)
++    repo.index.commit("add dangerous file")
++
++    # Modify it
++    full_path.write_text("modified content")
++
++    sync_manager = GitSyncManager(store=MagicMock(), wiki_dir=wiki_dir)
++    # This calls repo.git.diff('HEAD', '--', file_path)
++    diff = sync_manager.get_unstaged_diff(dangerous_file)
++
++    assert "modified content" in diff
++    # If it failed to treat '-v' as a path, diff would likely be empty or an error

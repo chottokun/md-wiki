@@ -21,3 +21,6 @@ class Config:
     
     # OKF Concept Types
     OKF_CONCEPT_TYPES: list = ["Concept", "Article", "Source", "RawSource", "Reference", "Landscape"]
+
+    # Accelerator configuration: auto, cpu, gpu
+    ACCELERATOR: str = os.getenv("ACCELERATOR", "auto").lower()
