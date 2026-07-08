@@ -4,8 +4,10 @@ import re
 import shutil
 import argparse
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, date
 from typing import Dict, Any, Optional
+from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from core.utils import parse_frontmatter, dump_frontmatter
 from core.schemas import WikiFrontmatterSchema
 
@@ -42,6 +44,11 @@ def _infer_type(file_path: Path, wiki_root: Path, current_type: Optional[str]) -
 
 def _format_iso_datetime(date_val: Any) -> str:
     """Try to parse old YYYY-MM-DD HH:mm or similar to ISO 8601."""
+    if isinstance(date_val, datetime):
+        return date_val.strftime("%Y-%m-%dT%H:%M:%S+09:00")
+    if isinstance(date_val, date):
+        return date_val.strftime("%Y-%m-%dT00:00:00+09:00")
+
     if not isinstance(date_val, str):
         return str(date_val)
 
@@ -219,10 +226,16 @@ def main():
 
     # 2. Iterate through all .md files (except index.md and log.md)
     reserved_files = {"index.md", "log.md"}
-    for md_file in wiki_dir.rglob("*.md"):
-        if md_file.name in reserved_files:
-            continue
-        migrate_frontmatter_and_content(md_file, wiki_dir, args.dry_run)
+    md_files = [
+        md_file for md_file in wiki_dir.rglob("*.md")
+        if md_file.name not in reserved_files
+    ]
+
+    if md_files:
+        with ThreadPoolExecutor() as executor:
+            # Use partial to pass extra arguments
+            func = partial(migrate_frontmatter_and_content, wiki_root=wiki_dir, dry_run=args.dry_run)
+            list(executor.map(func, md_files))
         
     # 3. Convert log.md if it exists
     migrate_log_file(wiki_dir / "log.md", args.dry_run)
