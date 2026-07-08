@@ -4,6 +4,7 @@ import re
 import sys
 import unicodedata
 import uuid
+import threading
 from collections import Counter
 from pathlib import Path
 from typing import Dict, Any, Optional, List
@@ -14,12 +15,20 @@ from io import StringIO
 from functools import lru_cache
 
 # YAMLハンドラーの初期化 (コメントとスタイルを維持)
-yaml = YAML()
-yaml.preserve_quotes = True
-yaml.indent(mapping=2, sequence=4, offset=2)
+_thread_local = threading.local()
 
-# セキュアなパース用のハンドラー (フロントマターのロードに使用)
-_safe_yaml = YAML(typ='safe')
+def _get_yaml():
+    if not hasattr(_thread_local, "yaml"):
+        y = YAML()
+        y.preserve_quotes = True
+        y.indent(mapping=2, sequence=4, offset=2)
+        _thread_local.yaml = y
+    return _thread_local.yaml
+
+def _get_safe_yaml():
+    if not hasattr(_thread_local, "safe_yaml"):
+        _thread_local.safe_yaml = YAML(typ='safe')
+    return _thread_local.safe_yaml
 
 # 各種ハイフン・ダッシュ類を標準ハイフンに統一するための変換テーブル
 # (\u2010-\u2015, \uFE58, \uFE63, \uFF0D など)
@@ -124,7 +133,7 @@ def parse_frontmatter(content: Any) -> tuple[Optional[Dict[str, Any]], str]:
         fm_text = match.group(1)
         body = content[match.end():].strip()
         try:
-            data = _safe_yaml.load(fm_text)
+            data = _get_safe_yaml().load(fm_text)
             result = dict(data) if data else {}
             return _migrate_legacy_frontmatter(result), body
         except Exception:
@@ -154,7 +163,7 @@ def dump_frontmatter(data: Dict[str, Any]) -> str:
             ordered[key] = val
     
     stream = StringIO()
-    yaml.dump(ordered, stream)
+    _get_yaml().dump(ordered, stream)
     return f"---\n{stream.getvalue().strip()}\n---\n"
 
 @lru_cache(maxsize=1)
