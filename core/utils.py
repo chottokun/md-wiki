@@ -16,6 +16,9 @@ yaml = YAML()
 yaml.preserve_quotes = True
 yaml.indent(mapping=2, sequence=4, offset=2)
 
+# セキュアなパース用のハンドラー (フロントマターのロードに使用)
+_safe_yaml = YAML(typ='safe')
+
 # 各種ハイフン・ダッシュ類を標準ハイフンに統一するための変換テーブル
 # (\u2010-\u2015, \uFE58, \uFE63, \uFF0D など)
 DASH_CHARS = "\u2010\u2011\u2012\u2013\u2014\u2015\uFE58\uFE63\uFF0D"
@@ -119,7 +122,7 @@ def parse_frontmatter(content: Any) -> tuple[Optional[Dict[str, Any]], str]:
         fm_text = match.group(1)
         body = content[match.end():].strip()
         try:
-            data = yaml.load(fm_text)
+            data = _safe_yaml.load(fm_text)
             result = dict(data) if data else {}
             return _migrate_legacy_frontmatter(result), body
         except Exception:
