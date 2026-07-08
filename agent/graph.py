@@ -150,7 +150,7 @@ def _batch_fetch_context(terms: list[str], llm) -> dict[str, tuple[str, list, li
     if terms_needing_translation:
         prompts = [get_translation_prompt(t) for t in terms_needing_translation]
         translated_results = llm.batch(prompts)
-        english_terms = [res.content.strip() for res in translated_results]
+        english_terms = [safe_get_content(res.content).strip() for res in translated_results]
 
         for t, eng in zip(terms_needing_translation, english_terms):
             logger.info(f"日本語用語 '{t}' を '{eng}' として再検索します")
