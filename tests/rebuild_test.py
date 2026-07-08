@@ -5,7 +5,6 @@ Wiki再構築テスト。
 注意: このテストは実際のLLMを呼び出す統合テストです。
 """
 import pytest
-import sys
 import os
 import shutil
 import time
@@ -85,13 +84,13 @@ def test_full_rebuild():
     
     # ── 2. データ投入 ──
     print("[2/5] Ingesting test document 1...")
-    r1 = run_cmd(["uv", "run", "python", "main.py", "tests/data_a.md", "--yes"])
+    run_cmd(["uv", "run", "python", "main.py", "tests/data_a.md", "--yes"])
     
     # Qdrantロック回避のため少し待機
     time.sleep(3)
     
     print("[3/5] Ingesting test document 2...")
-    r2 = run_cmd(["uv", "run", "python", "main.py", "tests/data_merge_test.md", "--yes"])
+    run_cmd(["uv", "run", "python", "main.py", "tests/data_merge_test.md", "--yes"])
     
     time.sleep(3)
     
@@ -186,7 +185,6 @@ def test_full_rebuild():
     # エラーがある場合のみ失敗とする（警告は許容）
     assert len(errors) == 0, f"Critical errors found: {errors}"
 
-import re
 
 if __name__ == "__main__":
     test_full_rebuild()
