@@ -45,14 +45,18 @@ class QdrantHybridStore:
             self.client = QdrantClient(path=q_path)
 
         
-        import urllib.request
+        import httpx
         ollama_running = False
-        ollama_url = os.getenv("LOCALLLM_BASE_URL", "http://localhost:11434")
+        # Use both LOCALLLM_BASE_URL and OLLAMA_HOST for compatibility
+        ollama_url = os.getenv("LOCALLLM_BASE_URL") or os.getenv("OLLAMA_HOST") or "http://localhost:11434"
         if is_safe_url(ollama_url):
             try:
-                with urllib.request.urlopen(ollama_url, timeout=1.0) as response:
-                    if response.status == 200:
-                        ollama_running = True
+                # Use httpx for a modern stack.
+                # Optimized connect timeout (0.2s) to fail fast if host is unreachable,
+                # minimizing blocking in synchronous initialization.
+                response = httpx.get(ollama_url, timeout=httpx.Timeout(1.0, connect=0.2))
+                if response.status_code == 200:
+                    ollama_running = True
             except Exception:  # nosec B110
                 pass
 
