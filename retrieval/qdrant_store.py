@@ -11,7 +11,7 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from qdrant_client import QdrantClient
 from qdrant_client.http import models as rest_models
 from core.config import Config
-from core.utils import parse_frontmatter
+from core.utils import parse_frontmatter, is_safe_url
 
 # ロギング設定
 logger = logging.getLogger(__name__)
@@ -45,16 +45,28 @@ class QdrantHybridStore:
             self.client = QdrantClient(path=q_path)
 
         
-        import urllib.request
+        import httpx
         ollama_running = False
-        ollama_url = os.getenv("LOCALLLM_BASE_URL", "http://localhost:11434")
-        if ollama_url.startswith(("http://", "https://")):
+        # Use both LOCALLLM_BASE_URL and OLLAMA_HOST for compatibility
+        ollama_url = os.getenv("LOCALLLM_BASE_URL") or os.getenv("OLLAMA_HOST") or "http://localhost:11434"
+        if is_safe_url(ollama_url):
             try:
-                with urllib.request.urlopen(ollama_url, timeout=1.0) as response:  # nosec B310
-                    if response.status == 200:
-                        ollama_running = True
+                # Use httpx for a modern stack.
+                # Optimized connect timeout (0.2s) to fail fast if host is unreachable,
+                # minimizing blocking in synchronous initialization.
+                response = httpx.get(ollama_url, timeout=httpx.Timeout(1.0, connect=0.2))
+                if response.status_code == 200:
+                    ollama_running = True
             except Exception:  # nosec B110
                 pass
+
+        # 設定に基づいてFastEmbedのExecution Providerを選択
+        if Config.ACCELERATOR == "gpu":
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        elif Config.ACCELERATOR == "cpu":
+            providers = ["CPUExecutionProvider"]
+        else:
+            providers = None  # Default behavior of FastEmbed
 
         if ollama_running:
             logger.info("Ollama is running. Using OllamaEmbeddings.")
@@ -63,12 +75,18 @@ class QdrantHybridStore:
                 base_url=ollama_url
             )
         else:
-            logger.info("Ollama is not running. Falling back to local FastEmbedEmbeddings with mixedbread-ai/mxbai-embed-large-v1.")
+            logger.info(f"Ollama is not running. Falling back to local FastEmbedEmbeddings with mixedbread-ai/mxbai-embed-large-v1 (Accelerator: {Config.ACCELERATOR}).")
             from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
             self.embeddings = FastEmbedEmbeddings(
-                model_name="mixedbread-ai/mxbai-embed-large-v1"
+                model_name="mixedbread-ai/mxbai-embed-large-v1",
+                providers=providers
             )
-        self.sparse_embeddings = FastEmbedSparse(model_name="Qdrant/bm25")
+
+        logger.info(f"Using FastEmbedSparse with model Qdrant/bm25 (Accelerator: {Config.ACCELERATOR}).")
+        self.sparse_embeddings = FastEmbedSparse(
+            model_name="Qdrant/bm25",
+            providers=providers
+        )
 
         self._ensure_collection()
 

@@ -4,17 +4,31 @@ import re
 import sys
 import unicodedata
 import uuid
+import threading
 from collections import Counter
 from pathlib import Path
 from typing import Dict, Any, Optional, List
+from urllib.parse import urlparse
+import ipaddress
 from ruamel.yaml import YAML
 from io import StringIO
 from functools import lru_cache
 
 # YAMLハンドラーの初期化 (コメントとスタイルを維持)
-yaml = YAML()
-yaml.preserve_quotes = True
-yaml.indent(mapping=2, sequence=4, offset=2)
+_thread_local = threading.local()
+
+def _get_yaml():
+    if not hasattr(_thread_local, "yaml"):
+        y = YAML()
+        y.preserve_quotes = True
+        y.indent(mapping=2, sequence=4, offset=2)
+        _thread_local.yaml = y
+    return _thread_local.yaml
+
+def _get_safe_yaml():
+    if not hasattr(_thread_local, "safe_yaml"):
+        _thread_local.safe_yaml = YAML(typ='safe')
+    return _thread_local.safe_yaml
 
 # 各種ハイフン・ダッシュ類を標準ハイフンに統一するための変換テーブル
 # (\u2010-\u2015, \uFE58, \uFE63, \uFF0D など)
@@ -72,11 +86,12 @@ def _migrate_legacy_frontmatter(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     if not data:
         return data
-    # abstract → description
-    if "abstract" in data and "description" not in data:
-        data["description"] = data.pop("abstract")
-    elif "abstract" in data and "description" in data:
-        data.pop("abstract")
+    # abstract/summary → description
+    for legacy_key in ["abstract", "summary"]:
+        if legacy_key in data and "description" not in data:
+            data["description"] = data.pop(legacy_key)
+        elif legacy_key in data and "description" in data:
+            data.pop(legacy_key)
     # updated → timestamp
     if "updated" in data and "timestamp" not in data:
         data["timestamp"] = data.pop("updated")
@@ -119,7 +134,7 @@ def parse_frontmatter(content: Any) -> tuple[Optional[Dict[str, Any]], str]:
         fm_text = match.group(1)
         body = content[match.end():].strip()
         try:
-            data = yaml.load(fm_text)
+            data = _get_safe_yaml().load(fm_text)
             result = dict(data) if data else {}
             return _migrate_legacy_frontmatter(result), body
         except Exception:
@@ -149,7 +164,7 @@ def dump_frontmatter(data: Dict[str, Any]) -> str:
             ordered[key] = val
     
     stream = StringIO()
-    yaml.dump(ordered, stream)
+    _get_yaml().dump(ordered, stream)
     return f"---\n{stream.getvalue().strip()}\n---\n"
 
 @lru_cache(maxsize=1)
@@ -283,7 +298,7 @@ def extract_json_from_text(text: str) -> Optional[str]:
         
     # 1. ```json ... ``` の抽出
     # ブロックを見つけてから、その中をバランスチェックする
-    json_block_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL)
+    json_block_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
     if json_block_match:
         inner = json_block_match.group(1)
         result = _extract_balanced_json(inner)
@@ -292,6 +307,40 @@ def extract_json_from_text(text: str) -> Optional[str]:
         
     # 2. 直接バランスしたブラケットを探す
     return _extract_balanced_json(text)
+
+def is_safe_url(url: str) -> bool:
+    """URLが安全か（SSRF対策）をチェックする。
+
+    http/httpsのみ許可し、169.254.169.254などのリンクローカル・マルチキャストアドレスを拒否する。
+    ただし、ローカルのOllama等に対応するため、localhostやループバックIPは許可する。
+    """
+    if not url:
+        return False
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+
+        if hostname == "localhost":
+            return True
+
+        try:
+            ip = ipaddress.ip_address(hostname)
+            if ip.is_loopback:
+                return True
+            if ip.is_link_local or ip.is_multicast:
+                return False
+        except ValueError:
+            # IPアドレスでない場合はドメイン名とみなす
+            pass
+
+        return True
+    except Exception:
+        return False
 
 def setup_windows_utf8():
     """

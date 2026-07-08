@@ -6,7 +6,6 @@ Wiki再構築テスト。
 """
 
 import pytest
-import sys
 import os
 import shutil
 import time
@@ -231,8 +230,6 @@ def test_full_rebuild():
     # エラーがある場合のみ失敗とする（警告は許容）
     assert len(errors) == 0, f"Critical errors found: {errors}"
 
-
-import re
 
 if __name__ == "__main__":
     test_full_rebuild()

@@ -1,0 +1,140 @@
+diff --git a/tests/test_migrate_to_okf.py b/tests/test_migrate_to_okf.py
+index 37b2874..b21f6eb 100644
+--- a/tests/test_migrate_to_okf.py
++++ b/tests/test_migrate_to_okf.py
+@@ -3,9 +3,17 @@
+ import shutil
+ import tempfile
+ import io
++import argparse
+ from pathlib import Path
+ from unittest.mock import patch
+-from migrate_to_okf import migrate_frontmatter_and_content
++from migrate_to_okf import (
++    migrate_frontmatter_and_content,
++    backup_wiki,
++    _infer_type,
++    _format_iso_datetime,
++    migrate_log_file,
++    main
++)
+ from core.utils import parse_frontmatter
+ 
+ class TestMigrateToOKF(unittest.TestCase):
+@@ -152,5 +160,116 @@ def test_migrate_frontmatter_and_content_write_error(self, mock_stdout):
+         # Verify that the write error message was printed
+         self.assertIn("❌ Error writing existent_file.md: Write error", mock_stdout.getvalue())
+ 
++    @patch('shutil.make_archive')
++    def test_backup_wiki(self, mock_make_archive):
++        # Case 1: Directory exists
++        backup_wiki(self.wiki_root)
++        mock_make_archive.assert_called_once()
++        args, kwargs = mock_make_archive.call_args
++        self.assertTrue(args[0].startswith("wiki_backup_"))
++        self.assertEqual(args[1], 'zip')
++        self.assertEqual(args[2], self.wiki_root)
++
++        # Case 2: Directory does not exist
++        mock_make_archive.reset_mock()
++        backup_wiki(Path("non_existent_dir"))
++        mock_make_archive.assert_not_called()
++
++    def test_infer_type(self):
++        # concepts
++        file_path = self.wiki_root / "concepts" / "test.md"
++        self.assertEqual(_infer_type(file_path, self.wiki_root, None), "Concept")
++
++        # raw_markdown
++        file_path = self.wiki_root / "raw_markdown" / "test.md"
++        self.assertEqual(_infer_type(file_path, self.wiki_root, None), "RawSource")
++
++        # references
++        file_path = self.wiki_root / "references" / "test.md"
++        self.assertEqual(_infer_type(file_path, self.wiki_root, None), "Reference")
++
++        # sources
++        file_path = self.wiki_root / "sources" / "test.md"
++        self.assertEqual(_infer_type(file_path, self.wiki_root, None), "Source")
++
++        # default (Article)
++        file_path = self.wiki_root / "test.md"
++        self.assertEqual(_infer_type(file_path, self.wiki_root, None), "Article")
++
++        # preserved type
++        file_path = self.wiki_root / "concepts" / "test.md"
++        self.assertEqual(_infer_type(file_path, self.wiki_root, "CustomType"), "CustomType")
++
++        # overwrite generic type
++        self.assertEqual(_infer_type(file_path, self.wiki_root, "wiki"), "Concept")
++
++    def test_format_iso_datetime(self):
++        # YYYY-MM-DD HH:mm
++        self.assertEqual(_format_iso_datetime("2023-10-27 10:00"), "2023-10-27T10:00:00+09:00")
++
++        # YYYY-MM-DD
++        self.assertEqual(_format_iso_datetime("2023-10-27"), "2023-10-27T00:00:00+09:00")
++
++        # Already ISO (or invalid for the custom parser, should return as is)
++        self.assertEqual(_format_iso_datetime("2023-10-27T10:00:00+09:00"), "2023-10-27T10:00:00+09:00")
++        self.assertEqual(_format_iso_datetime("Not a date"), "Not a date")
++
++        # Non-string input
++        self.assertEqual(_format_iso_datetime(12345), "12345")
++
++    def test_migrate_log_file(self):
++        log_path = self.wiki_root / "log.md"
++        content = """# Old Log
++## [2023-10-27 10:00] create | [[Test Page]]
++## [2023-10-27 11:00] update | Modified content
++## 2023-10-26
++* Existing entry
++"""
++        log_path.write_text(content, encoding="utf-8")
++
++        migrate_log_file(log_path, dry_run=False)
++
++        new_content = log_path.read_text(encoding="utf-8")
++        self.assertIn("# Directory Update Log", new_content)
++        self.assertIn("## 2023-10-27", new_content)
++        self.assertIn("* **Create**: [Test Page](Test Page.md).", new_content)
++        self.assertIn("* **Update**: Modified content.", new_content)
++        self.assertIn("## 2023-10-26", new_content)
++        self.assertIn("* Existing entry", new_content)
++
++    @patch('output.obsidian_writer.ObsidianWriter')
++    @patch('migrate_to_okf.setup_argparse')
++    def test_main(self, mock_setup_argparse, mock_obsidian_writer):
++        # Mock arguments
++        mock_setup_argparse.return_value = argparse.Namespace(
++            wiki_dir=str(self.wiki_root),
++            dry_run=False,
++            backup=False
++        )
++
++        # Setup files
++        home_md = self.wiki_root / "Home.md"
++        home_md.write_text("# Home", encoding="utf-8")
++
++        article_md = self.wiki_root / "article.md"
++        article_md.write_text("# Article", encoding="utf-8")
++
++        # Mock ObsidianWriter
++        mock_writer_instance = mock_obsidian_writer.return_value
++
++        main()
++
++        # Check Home.md renamed to index.md
++        self.assertFalse(home_md.exists())
++        self.assertTrue((self.wiki_root / "index.md").exists())
++
++        # Check article migrated
++        article_content = article_md.read_text(encoding="utf-8")
++        self.assertIn("type: Article", article_content)
++
++        # Check ObsidianWriter called
++        mock_obsidian_writer.assert_called_once_with(wiki_dir=str(self.wiki_root))
++        mock_writer_instance.update_index.assert_called_once()
++
+ if __name__ == "__main__":
+     unittest.main()

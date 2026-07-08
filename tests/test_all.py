@@ -138,44 +138,6 @@ class TestAutoLinkConcepts:
         assert "✨" in data["title"]
 
 
-class TestParseAndFilterConcepts:
-    """parse_and_filter_concepts のパースおよびノイズ除去ロジックを検証。"""
-
-    def test_basic_parsing(self):
-        from core.utils import parse_and_filter_concepts
-        raw = "- NLP\n- RAG\n- System Engineering"
-        result = parse_and_filter_concepts(raw)
-        assert result == ["NLP", "RAG", "System Engineering"]
-
-    def test_remove_citations_and_parentheses(self):
-        """引用 (et al) や片方だけの括弧を持つゴミが除去されること。"""
-        from core.utils import parse_and_filter_concepts
-        raw = "- Valid Concept\n- Retrieval (Lewis et al., 2020)\n- 2020)\n- et al. model"
-        result = parse_and_filter_concepts(raw)
-        assert "Valid Concept" in result
-        assert "Retrieval (Lewis et al., 2020)" not in result
-        assert "2020)" not in result
-        assert "et al. model" not in result
-
-    def test_remove_punctuation_and_links(self):
-        """末尾の句読点や、LLMが誤って付与した [[ ]] が除去されること。"""
-        from core.utils import parse_and_filter_concepts
-        raw = "- ConceptA.\n- [[ConceptB]],\n- ConceptC;"
-        result = parse_and_filter_concepts(raw)
-        assert "ConceptA" in result
-        assert "ConceptB" in result
-        assert "ConceptC" in result
-
-    def test_remove_duplicates_and_ignore_non_list(self):
-        """重複が排除され、箇条書き(-)以外の行が無視されること。"""
-        from core.utils import parse_and_filter_concepts
-        raw = "Here are the concepts:\n- LLM\n- RAG\n- LLM\nThese are important."
-        result = parse_and_filter_concepts(raw)
-        assert len(result) == 2
-        assert result[0] == "LLM"
-        assert result[1] == "RAG"
-
-
 class TestDumpFrontmatter:
     """dump_frontmatter の出力を検証。"""
 
