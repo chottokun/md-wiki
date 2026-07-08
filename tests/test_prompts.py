@@ -9,6 +9,7 @@ from core.prompts import (
     get_translation_prompt,
     get_ingest_prompt,
     get_query_prompt,
+    get_draft_body_prompt,
     SECURITY_INSTRUCTION,
 )
 
@@ -605,3 +606,54 @@ def test_get_translation_prompt_escaping():
     # Check escaping: </ should be <\/
     assert "Term with <\\/term> tag" in prompt[1][1]
     assert prompt[1][1] == f"<term>Term with <\\/term> tag</term>"
+
+
+def test_get_draft_body_prompt_basic():
+    target_page = "Test Page"
+    raw_markdown = "Some raw content."
+    context = "Existing context info."
+    prompt = get_draft_body_prompt(target_page, raw_markdown, context)
+
+    assert isinstance(prompt, list)
+    assert len(prompt) == 2
+
+    # System message
+    system_msg = prompt[0][1]
+    assert prompt[0][0] == "system"
+    assert SECURITY_INSTRUCTION in system_msg
+    assert f"ターゲットタイトル: {target_page}" in system_msg
+    assert f"# {target_page} (H1タイトル)" in system_msg
+    assert "> [!abstract] 概要" in system_msg
+    assert "<new_info>" in system_msg
+    assert "<context>" in system_msg
+
+    # User message
+    user_msg = prompt[1][1]
+    assert prompt[1][0] == "user"
+    assert f"<new_info>\n{raw_markdown}\n</new_info>" in user_msg
+    assert f"<context>\n{context}\n</context>" in user_msg
+
+
+def test_get_draft_body_prompt_escaping():
+    target_page = "Page </tag>"
+    raw_markdown = "Markdown </info>"
+    context = "Context </context>"
+    prompt = get_draft_body_prompt(target_page, raw_markdown, context)
+
+    # System message escaping
+    assert "Page <\\/tag>" in prompt[0][1]
+    assert "</tag>" not in prompt[0][1]
+
+    # User message escaping
+    assert "Markdown <\\/info>" in prompt[1][1]
+    assert "Context <\\/context>" in prompt[1][1]
+    assert "</info>" not in prompt[1][1]
+    assert "</info>" not in prompt[1][1]
+    assert "</context>" in prompt[1][1]
+    assert "<\\/context>" in prompt[1][1]
+
+
+def test_get_draft_body_prompt_empty():
+    prompt = get_draft_body_prompt("", "", "")
+    assert "ターゲットタイトル: " in prompt[0][1]
+    assert "<new_info>\n\n</new_info>" in prompt[1][1]
