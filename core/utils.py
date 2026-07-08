@@ -7,6 +7,8 @@ import uuid
 from collections import Counter
 from pathlib import Path
 from typing import Dict, Any, Optional, List
+from urllib.parse import urlparse
+import ipaddress
 from ruamel.yaml import YAML
 from io import StringIO
 from functools import lru_cache
@@ -292,6 +294,40 @@ def extract_json_from_text(text: str) -> Optional[str]:
         
     # 2. 直接バランスしたブラケットを探す
     return _extract_balanced_json(text)
+
+def is_safe_url(url: str) -> bool:
+    """URLが安全か（SSRF対策）をチェックする。
+
+    http/httpsのみ許可し、169.254.169.254などのリンクローカル・マルチキャストアドレスを拒否する。
+    ただし、ローカルのOllama等に対応するため、localhostやループバックIPは許可する。
+    """
+    if not url:
+        return False
+    try:
+        parsed = urlparse(url)
+        if parsed.scheme not in ("http", "https"):
+            return False
+
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+
+        if hostname == "localhost":
+            return True
+
+        try:
+            ip = ipaddress.ip_address(hostname)
+            if ip.is_loopback:
+                return True
+            if ip.is_link_local or ip.is_multicast:
+                return False
+        except ValueError:
+            # IPアドレスでない場合はドメイン名とみなす
+            pass
+
+        return True
+    except Exception:
+        return False
 
 def setup_windows_utf8():
     """
