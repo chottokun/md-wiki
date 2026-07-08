@@ -46,6 +46,23 @@ class TestLLMRouter(unittest.TestCase):
             model = router.get_model(LLMLayer.L1)
             self.assertIsInstance(model, ChatGoogleGenerativeAI)
 
+    def test_get_language_instruction_default(self):
+        # TARGET_LANGUAGE が設定されていない場合はデフォルトの Japanese
+        with patch.dict(os.environ, {}, clear=True):
+            # 他の必要な環境変数が消えると LLMRouter.__init__ でエラーになる可能性があるので注意
+            # LLMRouter.__init__ は LLM_PROVIDER 等を読み込む
+            with patch.dict(os.environ, {"LLM_PROVIDER": "ollama"}):
+                router = LLMRouter()
+                instruction = router.get_language_instruction()
+                self.assertEqual(instruction, "必ずJapaneseで回答・出力してください。")
+
+    def test_get_language_instruction_custom(self):
+        # TARGET_LANGUAGE が設定されている場合
+        with patch.dict(os.environ, {"TARGET_LANGUAGE": "English"}):
+            router = LLMRouter()
+            instruction = router.get_language_instruction()
+            self.assertEqual(instruction, "必ずEnglishで回答・出力してください。")
+
     def test_get_model_ollama_mapping(self):
         with patch("core.llm_router.ChatOllama") as mock_ollama:
             with patch.dict(os.environ, {
