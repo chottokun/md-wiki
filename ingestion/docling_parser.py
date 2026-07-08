@@ -4,6 +4,7 @@ from typing import Optional
 from docling.document_converter import DocumentConverter, PdfFormatOption
 from docling.datamodel.base_models import InputFormat
 from docling.datamodel.pipeline_options import PdfPipelineOptions, AcceleratorDevice
+from core.config import Config
 
 # ロギング設定
 logger = logging.getLogger(__name__)
@@ -29,10 +30,18 @@ class DoclingParser:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         # 変換パイプラインの設定
-        # VRAM節約と互換性のため、アクセラレータとしてCPUを指定
         pipeline_options = PdfPipelineOptions()
-        pipeline_options.accelerator_options.device = AcceleratorDevice.CPU
         
+        # 設定に基づいてアクセラレータを選択
+        if Config.ACCELERATOR == "gpu":
+            pipeline_options.accelerator_options.device = AcceleratorDevice.CUDA
+        elif Config.ACCELERATOR == "cpu":
+            pipeline_options.accelerator_options.device = AcceleratorDevice.CPU
+        else:
+            pipeline_options.accelerator_options.device = AcceleratorDevice.AUTO
+
+        logger.info(f"DoclingParser uses accelerator: {pipeline_options.accelerator_options.device}")
+
         self.converter = DocumentConverter(
             allowed_formats=[
                 InputFormat.PDF, 

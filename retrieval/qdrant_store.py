@@ -60,6 +60,14 @@ class QdrantHybridStore:
             except Exception:  # nosec B110
                 pass
 
+        # 設定に基づいてFastEmbedのExecution Providerを選択
+        if Config.ACCELERATOR == "gpu":
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+        elif Config.ACCELERATOR == "cpu":
+            providers = ["CPUExecutionProvider"]
+        else:
+            providers = None  # Default behavior of FastEmbed
+
         if ollama_running:
             logger.info("Ollama is running. Using OllamaEmbeddings.")
             self.embeddings = OllamaEmbeddings(
@@ -67,12 +75,18 @@ class QdrantHybridStore:
                 base_url=ollama_url
             )
         else:
-            logger.info("Ollama is not running. Falling back to local FastEmbedEmbeddings with mixedbread-ai/mxbai-embed-large-v1.")
+            logger.info(f"Ollama is not running. Falling back to local FastEmbedEmbeddings with mixedbread-ai/mxbai-embed-large-v1 (Accelerator: {Config.ACCELERATOR}).")
             from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
             self.embeddings = FastEmbedEmbeddings(
-                model_name="mixedbread-ai/mxbai-embed-large-v1"
+                model_name="mixedbread-ai/mxbai-embed-large-v1",
+                providers=providers
             )
-        self.sparse_embeddings = FastEmbedSparse(model_name="Qdrant/bm25")
+
+        logger.info(f"Using FastEmbedSparse with model Qdrant/bm25 (Accelerator: {Config.ACCELERATOR}).")
+        self.sparse_embeddings = FastEmbedSparse(
+            model_name="Qdrant/bm25",
+            providers=providers
+        )
 
         self._ensure_collection()
 
