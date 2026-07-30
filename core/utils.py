@@ -17,6 +17,7 @@ from functools import lru_cache
 # YAMLハンドラーの初期化 (コメントとスタイルを維持)
 _thread_local = threading.local()
 
+
 def _get_yaml():
     if not hasattr(_thread_local, "yaml"):
         y = YAML()
@@ -25,15 +26,18 @@ def _get_yaml():
         _thread_local.yaml = y
     return _thread_local.yaml
 
+
 def _get_safe_yaml():
     if not hasattr(_thread_local, "safe_yaml"):
-        _thread_local.safe_yaml = YAML(typ='safe')
+        _thread_local.safe_yaml = YAML(typ="safe")
     return _thread_local.safe_yaml
+
 
 # 各種ハイフン・ダッシュ類を標準ハイフンに統一するための変換テーブル
 # (\u2010-\u2015, \uFE58, \uFE63, \uFF0D など)
-DASH_CHARS = "\u2010\u2011\u2012\u2013\u2014\u2015\uFE58\uFE63\uFF0D"
+DASH_CHARS = "\u2010\u2011\u2012\u2013\u2014\u2015\ufe58\ufe63\uff0d"
 DASH_TRANSLATE_TABLE = str.maketrans(DASH_CHARS, "-" * len(DASH_CHARS))
+
 
 @lru_cache(maxsize=2048)
 def normalize_term(term: str) -> str:
@@ -47,40 +51,41 @@ def normalize_term(term: str) -> str:
     """
     if not term:
         return ""
-    
+
     # Unicode正規化 (全角英数→半角、互換文字の統一)
     t = unicodedata.normalize("NFKC", term)
-    
+
     # 各種ハイフン・ダッシュ類を ASCII ハイフンに統一
     t = t.translate(DASH_TRANSLATE_TABLE)
-    
+
     # 全角括弧→半角
-    t = t.replace('（', '(').replace('）', ')')
-    
+    t = t.replace("（", "(").replace("）", ")")
+
     # スラッシュやバックスラッシュをアンダースコアに置換（パス構成を回避）
-    t = t.replace('/', '_').replace('\\', '_')
+    t = t.replace("/", "_").replace("\\", "_")
 
     # コロン（MediaWiki名前空間記法）を除去
-    t = t.replace(':', '')
-    
+    t = t.replace(":", "")
+
     # トリムを最初に行う
     t = t.strip()
-    
+
     # スペースをアンダースコアに置換し、連続するアンダースコアを1つに
     t = t.replace(" ", "_")
-    t = re.sub(r'_+', '_', t)
-    
+    t = re.sub(r"_+", "_", t)
+
     # 小文字化
     t = t.lower()
-    
+
     # 拡張子の削除
-    t = re.sub(r'\.md$', '', t)
-    
+    t = re.sub(r"\.md$", "", t)
+
     return t
+
 
 def _migrate_legacy_frontmatter(data: Dict[str, Any]) -> Dict[str, Any]:
     """レガシーフィールド名を OKF v0.1 準拠名にマイグレーションする。
-    
+
     WikiFrontmatterSchema の model_validator と同等のロジックだが、
     スキーマを介さない直接的なフロントマター操作にも対応する。
     """
@@ -132,7 +137,7 @@ def parse_frontmatter(content: Any) -> tuple[Optional[Dict[str, Any]], str]:
     match = re.search(r"^---\s*\n(.*?)\n---\s*(\n|$)", content, re.DOTALL)
     if match:
         fm_text = match.group(1)
-        body = content[match.end():].strip()
+        body = content[match.end() :].strip()
         try:
             data = _get_safe_yaml().load(fm_text)
             result = dict(data) if data else {}
@@ -141,12 +146,22 @@ def parse_frontmatter(content: Any) -> tuple[Optional[Dict[str, Any]], str]:
             return None, content
     return None, content
 
+
 # OKF v0.1 推奨フィールド順序: type → title → description → resource → tags → timestamp → 拡張
 _OKF_FIELD_ORDER = [
-    "type", "title", "description", "resource", "tags", "timestamp",
+    "type",
+    "title",
+    "description",
+    "resource",
+    "tags",
+    "timestamp",
     # md-wiki extensions
-    "aliases", "concepts", "created", "sources",
+    "aliases",
+    "concepts",
+    "created",
+    "sources",
 ]
+
 
 def dump_frontmatter(data: Dict[str, Any]) -> str:
     """
@@ -162,10 +177,11 @@ def dump_frontmatter(data: Dict[str, Any]) -> str:
     for key, val in data.items():
         if key not in ordered:
             ordered[key] = val
-    
+
     stream = StringIO()
     _get_yaml().dump(ordered, stream)
     return f"---\n{stream.getvalue().strip()}\n---\n"
+
 
 @lru_cache(maxsize=1)
 def _get_all_concepts_internal(wiki_dir: str) -> List[str]:
@@ -182,18 +198,21 @@ def _get_all_concepts_internal(wiki_dir: str) -> List[str]:
             concepts.append(name)
     return list(set(concepts))
 
+
 def get_all_concepts(wiki_dir: str = "wiki") -> List[str]:
     """wiki/concepts ディレクトリ内のファイル名から既存の概念リストを取得する。
-    
+
     呼び出し側での変更がキャッシュに影響しないよう、常にコピーを返す。
     """
     return list(_get_all_concepts_internal(str(wiki_dir)))
 
+
 WIKI_LINK_RE = re.compile(r"\[\[([^|#\]]+)(?:[|#][^\]]+)?\]\]")
+
 
 def auto_link_concepts(body: str, concepts: List[str]) -> str:
     """本文中の用語を自動でリンク化する。
-    
+
     コードブロックや見出し、すでにリンク化されている箇所を回避し、
     最も長い用語から優先的にリンクを付与する。
     """
@@ -205,19 +224,21 @@ def auto_link_concepts(body: str, concepts: List[str]) -> str:
     normalized_concepts = [c.translate(DASH_TRANSLATE_TABLE) for c in concepts]
 
     placeholders = {}
-    
+
     # 1. コードブロックの退避
     def code_repl(match):
         ph = f"__CODE_BLOCK_{uuid.uuid4().hex}__"
         placeholders[ph] = match.group(0)
         return ph
+
     body = re.sub(r"```.*?```", code_repl, body, flags=re.DOTALL)
-    
+
     # 2. 見出しの退避
     def header_repl(match):
         ph = f"__HEADER_{uuid.uuid4().hex}__"
         placeholders[ph] = match.group(0)
         return ph
+
     body = re.sub(r"^#+ .*$", header_repl, body, flags=re.MULTILINE)
 
     # 3. 既存リンクの退避 (二重リンク防止)
@@ -225,33 +246,38 @@ def auto_link_concepts(body: str, concepts: List[str]) -> str:
         ph = f"__LINK_{uuid.uuid4().hex}__"
         placeholders[ph] = match.group(0)
         return ph
+
     body = re.sub(r"\[\[.*?\]\]", link_repl, body)
-    
+
     # 用語の長い順にソート（最長一致を優先）
     sorted_concepts = sorted(list(set(normalized_concepts)), key=len, reverse=True)
-    
+
     for concept in sorted_concepts:
-        if len(concept) < 2: continue
+        if len(concept) < 2:
+            continue
         # 一般的すぎる用語やプレースホルダを除外
-        if concept.lower() in ["用語名", "title", "abstract", "concept"]: continue
+        if concept.lower() in ["用語名", "title", "abstract", "concept"]:
+            continue
 
         escaped_concept = re.escape(concept)
         # 境界条件チェック: 前後に英数字やハイフンがない場合のみ置換
         pattern = rf"(?<![A-Za-z0-9_\-]){escaped_concept}(?![A-Za-z0-9_\-])"
         body = re.sub(pattern, f"[[{concept}]]", body)
-        
+
         # リンク化したばかりの部分を即座に退避して、短い単語による重複置換を防ぐ
         def new_link_repl(match):
             ph = f"__LINK_{uuid.uuid4().hex}__"
             placeholders[ph] = match.group(0)
             return ph
+
         body = re.sub(rf"\[\[{escaped_concept}\]\]", new_link_repl, body)
-    
+
     # 4. 退避した要素を戻す
     for ph, orig in placeholders.items():
         body = body.replace(ph, orig)
-        
+
     return body.strip()
+
 
 def parse_and_filter_concepts(raw_llm_output: str) -> List[str]:
     """LLMから出力された箇条書きの概念リストをパースし、ノイズを除去する。"""
@@ -260,32 +286,70 @@ def parse_and_filter_concepts(raw_llm_output: str) -> List[str]:
         line = line.strip()
         if line.startswith("-"):
             c = line[1:].strip().strip(".,;:").replace("[[", "").replace("]]", "")
-            if len(c) < 2: continue
-            if ")" in c and "(" not in c: continue
-            if "et al" in c.lower(): continue
-            if c.lower() in ["用語名", "title", "abstract", "concept"]: continue
+            if len(c) < 2:
+                continue
+            if ")" in c and "(" not in c:
+                continue
+            if "et al" in c.lower():
+                continue
+            if c.lower() in ["用語名", "title", "abstract", "concept"]:
+                continue
             new_concepts.append(c)
     return list(dict.fromkeys(new_concepts))
 
+
 TECHNICAL_STOPWORDS = {
-    "カント", "うつ病", "フィードバック", "ジャーナリング", "スコアリング", 
-    "タイトル", "要約", "概要", "詳細", "目次", "参考文献", "謝辞", "home",
-    "background", "summary", "abstract", "title", "conclusion", "references",
-    "introduction", "method", "results", "discussion", "future_work",
-    "human", "people", "user", "study", "research", "paper", "article"
+    "カント",
+    "うつ病",
+    "フィードバック",
+    "ジャーナリング",
+    "スコアリング",
+    "タイトル",
+    "要約",
+    "概要",
+    "詳細",
+    "目次",
+    "参考文献",
+    "謝辞",
+    "home",
+    "background",
+    "summary",
+    "abstract",
+    "title",
+    "conclusion",
+    "references",
+    "introduction",
+    "method",
+    "results",
+    "discussion",
+    "future_work",
+    "human",
+    "people",
+    "user",
+    "study",
+    "research",
+    "paper",
+    "article",
 }
+
 
 @lru_cache(maxsize=2048)
 def is_technical_term(term: str) -> bool:
     """用語が技術的・専門的であるか判定する（簡易フィルタ）。"""
-    if not term: return False
+    if not term:
+        return False
     norm = term.lower().strip()
-    if norm in TECHNICAL_STOPWORDS: return False
-    if len(norm) <= 1: return False
-    if norm.isdigit(): return False
+    if norm in TECHNICAL_STOPWORDS:
+        return False
+    if len(norm) <= 1:
+        return False
+    if norm.isdigit():
+        return False
     # 特殊記号のみ、または特定の単語のみを排除
-    if re.match(r'^[0-9\.\-\(\)\s]+$', norm): return False
+    if re.match(r"^[0-9\.\-\(\)\s]+$", norm):
+        return False
     return True
+
 
 def extract_json_from_text(text: str) -> Optional[str]:
     """
@@ -295,18 +359,21 @@ def extract_json_from_text(text: str) -> Optional[str]:
     """
     if not text:
         return None
-        
+
     # 1. ```json ... ``` の抽出
     # ブロックを見つけてから、その中をバランスチェックする
-    json_block_match = re.search(r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE)
+    json_block_match = re.search(
+        r"```(?:json)?\s*(.*?)\s*```", text, re.DOTALL | re.IGNORECASE
+    )
     if json_block_match:
         inner = json_block_match.group(1)
         result = _extract_balanced_json(inner)
         if result:
             return result
-        
+
     # 2. 直接バランスしたブラケットを探す
     return _extract_balanced_json(text)
+
 
 def is_safe_url(url: str) -> bool:
     """URLが安全か（SSRF対策）をチェックする。
@@ -342,6 +409,7 @@ def is_safe_url(url: str) -> bool:
     except Exception:
         return False
 
+
 def setup_windows_utf8():
     """
     Windows環境においてコンソールのコードページをUTF-8に設定し、
@@ -350,6 +418,7 @@ def setup_windows_utf8():
     if sys.platform == "win32":
         # Windowsのコンソールコードページを UTF-8 (65001) に強制変更
         import ctypes
+
         try:
             ctypes.windll.kernel32.SetConsoleCP(65001)
             ctypes.windll.kernel32.SetConsoleOutputCP(65001)
@@ -359,20 +428,20 @@ def setup_windows_utf8():
         os.environ["PYTHONUTF8"] = "1"
         os.environ["PYTHONIOENCODING"] = "utf-8"
         # 標準出力と標準エラーを UTF-8 に強制
-        if hasattr(sys.stdout, 'reconfigure'):
-            sys.stdout.reconfigure(encoding='utf-8', errors='replace')
-            sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+        if hasattr(sys.stdout, "reconfigure"):
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+            sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
 def _extract_balanced_json(text: str) -> Optional[str]:
     """最初に見つかった { から、対応する } までの範囲を抽出する。"""
     if text.count("{") != text.count("}"):
         return None
-        
+
     start = text.find("{")
     if start == -1:
         return None
-        
+
     depth = 0
     for i in range(start, len(text)):
         if text[i] == "{":
@@ -380,9 +449,34 @@ def _extract_balanced_json(text: str) -> Optional[str]:
         elif text[i] == "}":
             depth -= 1
             if depth == 0:
-                return text[start:i+1]
-                
+                return text[start : i + 1]
+
     return None
+
+
+def walk_wiki_md_files(
+    wiki_dir: Path, include_raw_and_sources: bool = False
+) -> List[Path]:
+    """
+    Wikiディレクトリ内のすべてのMarkdownファイルを効率的に走査する。
+    .git, .obsidian は常に除外する。
+    include_raw_and_sources が False の場合は raw_markdown と sources ディレクトリも除外する。
+    """
+    import os
+
+    pages = []
+    exclude_dirs = {".git", ".obsidian"}
+    if not include_raw_and_sources:
+        exclude_dirs.update({"sources", "raw_markdown"})
+
+    for root, dirs, files in os.walk(wiki_dir):
+        # ディレクトリをインプレースで削ることで、走査自体をスキップする
+        dirs[:] = [d for d in dirs if d not in exclude_dirs and not d.startswith(".")]
+        for file in files:
+            if file.endswith(".md"):
+                pages.append(Path(root) / file)
+    return pages
+
 
 def find_red_links(wiki_dir: Path) -> Counter:
     """
@@ -390,13 +484,10 @@ def find_red_links(wiki_dir: Path) -> Counter:
     並列処理により高速化されている。
     """
     # 予約ディレクトリとファイルをパスパーツで除外
-    all_pages = list(wiki_dir.rglob("*.md"))
     pages = [
-        p for p in all_pages
-        if "raw_markdown" not in p.parts
-        and "sources" not in p.parts
-        and ".obsidian" not in p.parts
-        and p.name != "Management Dashboard.md"
+        p
+        for p in walk_wiki_md_files(wiki_dir, include_raw_and_sources=False)
+        if p.name != "Management Dashboard.md"
     ]
 
     existing_normalized_names = {normalize_term(p.stem) for p in pages}
@@ -409,12 +500,16 @@ def find_red_links(wiki_dir: Path) -> Counter:
             links = WIKI_LINK_RE.findall(content)
             for term in links:
                 term = term.strip().strip("[]")
-                if not term or "/" in term or "\\" in term: continue
-                if term.lower().endswith(('.pdf', '.png', '.jpg', '.jpeg', '.gif')): continue
-                if ":" in term: continue
+                if not term or "/" in term or "\\" in term:
+                    continue
+                if term.lower().endswith((".pdf", ".png", ".jpg", ".jpeg", ".gif")):
+                    continue
+                if ":" in term:
+                    continue
 
                 norm_term = normalize_term(term)
-                if not is_technical_term(term) or not is_technical_term(norm_term): continue
+                if not is_technical_term(term) or not is_technical_term(norm_term):
+                    continue
 
                 if norm_term not in existing_normalized_names:
                     local_counter[term] += 1

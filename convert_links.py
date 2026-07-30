@@ -7,14 +7,28 @@ import concurrent.futures
 from pathlib import Path
 from core.utils import parse_frontmatter, normalize_term
 
+
 def parse_args():
-    parser = argparse.ArgumentParser(description="Convert Obsidian wikilinks to standard Markdown relative links.")
-    parser.add_argument("--out-dir", default="dist/wiki", help="Output directory (default: dist/wiki)")
-    parser.add_argument("--inplace", action="store_true", help="Modify source files directly inside the wiki folder")
-    parser.add_argument("--dry-run", action="store_true", help="Preview changes without modifying files")
+    parser = argparse.ArgumentParser(
+        description="Convert Obsidian wikilinks to standard Markdown relative links."
+    )
+    parser.add_argument(
+        "--out-dir", default="dist/wiki", help="Output directory (default: dist/wiki)"
+    )
+    parser.add_argument(
+        "--inplace",
+        action="store_true",
+        help="Modify source files directly inside the wiki folder",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Preview changes without modifying files"
+    )
     parser.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
-    parser.add_argument("--dir", default="wiki", help="Target source wiki directory (default: wiki)")
+    parser.add_argument(
+        "--dir", default="wiki", help="Target source wiki directory (default: wiki)"
+    )
     return parser.parse_args()
+
 
 def _process_page_for_map(path: Path, wiki_dir: Path) -> dict[str, Path]:
     """Processes a single markdown file to extract potential link keys."""
@@ -50,24 +64,31 @@ def _process_page_for_map(path: Path, wiki_dir: Path) -> dict[str, Path]:
         pass
     return local_map
 
+
 def build_page_map(wiki_dir: Path) -> dict[str, Path]:
     """
     Scans the wiki folder to build a mapping from notes stems, titles,
     and aliases to their relative path within the vault.
     """
     page_map = {}
-    md_files = list(wiki_dir.rglob("*.md"))
+    from core.utils import walk_wiki_md_files
+
+    md_files = walk_wiki_md_files(wiki_dir, include_raw_and_sources=False)
 
     # Using ProcessPoolExecutor for CPU-bound frontmatter parsing
     with concurrent.futures.ProcessPoolExecutor() as executor:
-        futures = {executor.submit(_process_page_for_map, path, wiki_dir): path for path in md_files}
+        futures = {
+            executor.submit(_process_page_for_map, path, wiki_dir): path
+            for path in md_files
+        }
         for future in concurrent.futures.as_completed(futures):
             try:
                 page_map.update(future.result())
             except Exception:
                 pass
-            
+
     return page_map
+
 
 def compute_relative_link(source_rel_path: Path, target_rel_path: Path) -> str:
     """Computes a relative markdown link path from source to target."""
@@ -76,20 +97,23 @@ def compute_relative_link(source_rel_path: Path, target_rel_path: Path) -> str:
     # Replace Windows backslashes with standard forward slashes
     return rel_path.replace("\\", "/")
 
-def replace_wikilinks(content: str, source_rel_path: Path, page_map: dict[str, Path]) -> tuple[str, int]:
+
+def replace_wikilinks(
+    content: str, source_rel_path: Path, page_map: dict[str, Path]
+) -> tuple[str, int]:
     """
     Replaces [[Link]] syntax in content with standard markdown relative links.
     Returns (replaced_content, count)
     """
     # Pattern to match [[PageName]] or [[PageName#Section]] or [[PageName|Alias]] or [[#Section]]
     pattern = re.compile(r"\[\[([^\]|#]+)?(?:#([^\]|]+))?(?:\|([^\]]+))?\]\]")
-    count = [0] # Mutable container to track replacements
-    
+    count = [0]  # Mutable container to track replacements
+
     def repl(match):
         target_page = match.group(1)
         anchor = match.group(2)
         alias = match.group(3)
-        
+
         # Determine display text
         if alias:
             display_text = alias
@@ -99,23 +123,25 @@ def replace_wikilinks(content: str, source_rel_path: Path, page_map: dict[str, P
             display_text = anchor
         else:
             display_text = ""
-            
+
         count[0] += 1
-        
+
         # 1. Same-file anchor link: [[#Section]]
         if not target_page:
             if anchor:
-                anchor_slug = anchor.lower().strip().replace(" ", "-").replace("　", "-")
+                anchor_slug = (
+                    anchor.lower().strip().replace(" ", "-").replace("　", "-")
+                )
                 anchor_slug = re.sub(r"[^\w\-]", "", anchor_slug)
                 return f"[{display_text}](#{anchor_slug})"
-            return match.group(0) # Invalid double brackets
-            
+            return match.group(0)  # Invalid double brackets
+
         # 2. Cross-file link
         target_key = target_page.lower().strip()
         target_key_clean = target_key.replace("_", " ").replace("-", " ")
-        
+
         target_rel_path = page_map.get(target_key) or page_map.get(target_key_clean)
-        
+
         if target_rel_path:
             link_path = compute_relative_link(source_rel_path, target_rel_path)
         else:
@@ -130,19 +156,26 @@ def replace_wikilinks(content: str, source_rel_path: Path, page_map: dict[str, P
                 depth = len(rel_parts)
                 prefix = "../" * depth
                 link_path = f"{prefix}concepts/{target_norm}"
-                
+
         # Append anchor if present
         if anchor:
             anchor_slug = anchor.lower().strip().replace(" ", "-").replace("　", "-")
             anchor_slug = re.sub(r"[^\w\-]", "", anchor_slug)
             link_path = f"{link_path}#{anchor_slug}"
-            
+
         return f"[{display_text}]({link_path})"
-        
+
     replaced_content = pattern.sub(repl, content)
     return replaced_content, count[0]
 
-def _convert_single_file(path: Path, source_dir: Path, out_dir: Path, page_map: dict[str, Path], inplace: bool) -> tuple[int, int]:
+
+def _convert_single_file(
+    path: Path,
+    source_dir: Path,
+    out_dir: Path,
+    page_map: dict[str, Path],
+    inplace: bool,
+) -> tuple[int, int]:
     """Processes a single markdown file for link conversion."""
     rel_path = path.relative_to(source_dir)
     try:
@@ -168,6 +201,7 @@ def _convert_single_file(path: Path, source_dir: Path, out_dir: Path, page_map: 
         print(f"Error processing {rel_path}: {e}")
         return 0, 0
 
+
 def _copy_other_file(path: Path, source_dir: Path, out_dir: Path):
     """Copies a non-markdown file to the output directory."""
     rel_path = path.relative_to(source_dir)
@@ -175,23 +209,24 @@ def _copy_other_file(path: Path, source_dir: Path, out_dir: Path):
     dest_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(path, dest_path)
 
+
 def main():
     args = parse_args()
     source_dir = Path(args.dir).resolve()
-    
+
     if not source_dir.exists():
         print(f"Error: Source directory '{source_dir}' does not exist.")
         sys.exit(1)
-        
+
     # Build note/page mapping
     print(f"Indexing wiki folder '{source_dir}'...")
     page_map = build_page_map(source_dir)
     print(f"Indexed {len(page_map)} page names and aliases.")
-    
+
     # Track files for processing
     md_files = []
     other_files = []
-    
+
     for root, dirs, files in os.walk(source_dir):
         # Exclude hidden directories
         dirs[:] = [d for d in dirs if not d.startswith(".")]
@@ -201,7 +236,7 @@ def main():
                 md_files.append(path)
             else:
                 other_files.append(path)
-                
+
     # Dry run or confirm
     if args.dry_run:
         print("\n--- Dry Run Preview ---")
@@ -222,40 +257,49 @@ def main():
     if not args.inplace:
         print(f"Exporting converted wiki to: {out_dir}")
         if out_dir.exists() and not args.yes:
-            ans = input(f"Output directory '{out_dir}' already exists. Overwrite? (y/N): ")
-            if ans.lower() != 'y':
+            ans = input(
+                f"Output directory '{out_dir}' already exists. Overwrite? (y/N): "
+            )
+            if ans.lower() != "y":
                 print("Aborted.")
                 return
     else:
         print(f"Modifying files INPLACE inside: {source_dir}")
         if not args.yes:
-            ans = input("This will overwrite the source files directly. Are you sure? (y/N): ")
-            if ans.lower() != 'y':
+            ans = input(
+                "This will overwrite the source files directly. Are you sure? (y/N): "
+            )
+            if ans.lower() != "y":
                 print("Aborted.")
                 return
-                
+
     # Process files in parallel
     converted_count = 0
     total_links_converted = 0
-    
+
     with concurrent.futures.ThreadPoolExecutor() as executor:
         futures = [
-            executor.submit(_convert_single_file, path, source_dir, out_dir, page_map, args.inplace)
+            executor.submit(
+                _convert_single_file, path, source_dir, out_dir, page_map, args.inplace
+            )
             for path in md_files
         ]
         for future in concurrent.futures.as_completed(futures):
             c_count, l_count = future.result()
             converted_count += c_count
             total_links_converted += l_count
-                
+
     # Copy other static assets (images, pdfs) in parallel
     if not args.inplace:
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            executor.map(lambda p: _copy_other_file(p, source_dir, out_dir), other_files)
-            
-    print(f"\n🎉 Conversion completed!")
+            executor.map(
+                lambda p: _copy_other_file(p, source_dir, out_dir), other_files
+            )
+
+    print("\n🎉 Conversion completed!")
     print(f"Processed {len(md_files)} Markdown files.")
     print(f"Converted {total_links_converted} links across {converted_count} files.")
+
 
 if __name__ == "__main__":
     main()
