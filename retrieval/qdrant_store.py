@@ -16,16 +16,13 @@ from core.utils import parse_frontmatter, is_safe_url
 # ロギング設定
 logger = logging.getLogger(__name__)
 
+
 class QdrantHybridStore:
     """
     Qdrantを使用したハイブリッド検索（Dense + Sparse）を提供する高機能ストア。
     """
-    
-    def __init__(
-        self,
-        collection_name: str = "rag_wiki",
-        path: Optional[str] = None
-    ):
+
+    def __init__(self, collection_name: str = "rag_wiki", path: Optional[str] = None):
         load_dotenv()
         self.collection_name = collection_name
         self.wiki_dir = Path("wiki")
@@ -44,17 +41,23 @@ class QdrantHybridStore:
             logger.info(f"Qdrantをローカルモード({q_path})で初期化します。")
             self.client = QdrantClient(path=q_path)
 
-        
         import httpx
+
         ollama_running = False
         # Use both LOCALLLM_BASE_URL and OLLAMA_HOST for compatibility
-        ollama_url = os.getenv("LOCALLLM_BASE_URL") or os.getenv("OLLAMA_HOST") or "http://localhost:11434"
+        ollama_url = (
+            os.getenv("LOCALLLM_BASE_URL")
+            or os.getenv("OLLAMA_HOST")
+            or "http://localhost:11434"
+        )
         if is_safe_url(ollama_url):
             try:
                 # Use httpx for a modern stack.
                 # Optimized connect timeout (0.2s) to fail fast if host is unreachable,
                 # minimizing blocking in synchronous initialization.
-                response = httpx.get(ollama_url, timeout=httpx.Timeout(1.0, connect=0.2))
+                response = httpx.get(
+                    ollama_url, timeout=httpx.Timeout(1.0, connect=0.2)
+                )
                 if response.status_code == 200:
                     ollama_running = True
             except Exception:  # nosec B110
@@ -72,20 +75,23 @@ class QdrantHybridStore:
             logger.info("Ollama is running. Using OllamaEmbeddings.")
             self.embeddings = OllamaEmbeddings(
                 model=os.getenv("EMBEDDING_MODEL", "mxbai-embed-large"),
-                base_url=ollama_url
+                base_url=ollama_url,
             )
         else:
-            logger.info(f"Ollama is not running. Falling back to local FastEmbedEmbeddings with mixedbread-ai/mxbai-embed-large-v1 (Accelerator: {Config.ACCELERATOR}).")
+            logger.info(
+                f"Ollama is not running. Falling back to local FastEmbedEmbeddings with mixedbread-ai/mxbai-embed-large-v1 (Accelerator: {Config.ACCELERATOR})."
+            )
             from langchain_community.embeddings.fastembed import FastEmbedEmbeddings
+
             self.embeddings = FastEmbedEmbeddings(
-                model_name="mixedbread-ai/mxbai-embed-large-v1",
-                providers=providers
+                model_name="mixedbread-ai/mxbai-embed-large-v1", providers=providers
             )
 
-        logger.info(f"Using FastEmbedSparse with model Qdrant/bm25 (Accelerator: {Config.ACCELERATOR}).")
+        logger.info(
+            f"Using FastEmbedSparse with model Qdrant/bm25 (Accelerator: {Config.ACCELERATOR})."
+        )
         self.sparse_embeddings = FastEmbedSparse(
-            model_name="Qdrant/bm25",
-            providers=providers
+            model_name="Qdrant/bm25", providers=providers
         )
 
         self._ensure_collection()
@@ -102,19 +108,21 @@ class QdrantHybridStore:
             sparse_embedding=self.sparse_embeddings,
             retrieval_mode=retrieval_mode,
         )
-        
+
         try:
             chunk_size = int(os.getenv("CHUNK_SIZE", "400"))
             chunk_overlap = int(os.getenv("CHUNK_OVERLAP", "50"))
         except ValueError:
-            logger.warning("Invalid CHUNK_SIZE or CHUNK_OVERLAP environment variable. Using defaults.")
+            logger.warning(
+                "Invalid CHUNK_SIZE or CHUNK_OVERLAP environment variable. Using defaults."
+            )
             chunk_size = 400
             chunk_overlap = 50
 
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
-            separators=["\n\n", "\n", "。", "、", " ", ""]
+            separators=["\n\n", "\n", "。", "、", " ", ""],
         )
 
     def _ensure_collection(self):
@@ -124,12 +132,12 @@ class QdrantHybridStore:
             self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=rest_models.VectorParams(
-                    size=1024, # mxbai-embed-large
-                    distance=rest_models.Distance.COSINE
+                    size=1024,  # mxbai-embed-large
+                    distance=rest_models.Distance.COSINE,
                 ),
                 sparse_vectors_config={
                     "langchain-sparse": rest_models.SparseVectorParams()
-                }
+                },
             )
 
     def get_chunks(self, text: str, metadata: Dict[str, Any]) -> List[Document]:
@@ -142,7 +150,9 @@ class QdrantHybridStore:
 
     def add_documents(self, documents: List[Document], batch_size: int = 100):
         """ドキュメントをバッチサイズごとに分割して並列に登録する。"""
-        batches = [documents[i : i + batch_size] for i in range(0, len(documents), batch_size)]
+        batches = [
+            documents[i : i + batch_size] for i in range(0, len(documents), batch_size)
+        ]
 
         # Qdrant serverモード時のみCPUバウンドな埋め込み生成とIOバウンドなQdrant登録を並列化
         # local/memoryモード時は同時書き込みによるロック競合を避けるため順次実行
@@ -169,26 +179,36 @@ class QdrantHybridStore:
             results = list(executor.map(lambda q: self.search(q, k=k), queries))
         return results
 
-    def sync_from_disk(self, include_unreviewed: Optional[bool] = None, wiki_dir: Optional[str] = None, raw_md_dir: Optional[str] = None):
+    def sync_from_disk(
+        self,
+        include_unreviewed: Optional[bool] = None,
+        wiki_dir: Optional[str] = None,
+        raw_md_dir: Optional[str] = None,
+    ):
         """ディスク上の全Wikiファイルを再スキャンしてQdrantを再構築する。"""
         if include_unreviewed is None:
             include_unreviewed = Config.INCLUDE_UNREVIEWED
 
         self.client.delete_collection(collection_name=self.collection_name)
         self._ensure_collection()
-        
+
         # テスト等でディレクトリを明示的に指定された場合に対応
         w_dir = Path(wiki_dir) if wiki_dir else self.wiki_dir
-        
-        wiki_files = w_dir.rglob("*.md")
+
+        from core.utils import walk_wiki_md_files
+
+        wiki_files = walk_wiki_md_files(w_dir, include_raw_and_sources=True)
 
         def process_file(file_path: Path) -> List[Document]:
             # 特殊なファイルや隠しディレクトリ配下のファイルを除外
-            if any(x in file_path.name for x in [".md-wiki-sync-state", "Home.md", "index.md", "log.md"]):
+            if any(
+                x in file_path.name
+                for x in [".md-wiki-sync-state", "Home.md", "index.md", "log.md"]
+            ):
                 return []
             if any(part.startswith(".") for part in file_path.parts):
                 return []
-            
+
             try:
                 content = file_path.read_text(encoding="utf-8")
             except Exception as e:
@@ -198,12 +218,12 @@ class QdrantHybridStore:
             if not include_unreviewed:
                 if "未審査" in content or "#未審査" in content:
                     return []
-                
+
             source_name = file_path.stem
             is_raw = "raw_markdown" in str(file_path)
-            
+
             data, _ = parse_frontmatter(content)
-            
+
             if is_raw:
                 pdf_name = source_name.replace("_raw", "") + ".pdf"
                 doc_type = data.get("type", "RawSource") if data else "RawSource"
@@ -214,9 +234,12 @@ class QdrantHybridStore:
                 doc_type = data.get("type", "Concept") if data else "Concept"
                 if doc_type == "wiki_page" or doc_type == "wiki":
                     doc_type = "Article"
-                return self.get_chunks(content, {"source": source_name, "type": doc_type})
+                return self.get_chunks(
+                    content, {"source": source_name, "type": doc_type}
+                )
 
         import concurrent.futures
+
         batch_size = 100
         current_batch = []
 
@@ -234,7 +257,7 @@ class QdrantHybridStore:
                 except Exception as e:
                     file_path = future_to_file[future]
                     logger.error(f"Error processing file {file_path}: {e}")
-        
+
         if current_batch:
             self.add_documents(current_batch)
 
@@ -265,6 +288,6 @@ class QdrantHybridStore:
 
     def close(self):
         """クライアント接続を明示的に閉じる。"""
-        if hasattr(self, 'client'):
+        if hasattr(self, "client"):
             self.client.close()
             logger.info("Qdrant client connection closed.")

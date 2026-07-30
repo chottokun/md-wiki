@@ -13,7 +13,6 @@ from core.utils import (
     normalize_term,
     parse_frontmatter,
     dump_frontmatter,
-    WIKI_LINK_RE,
     find_red_links,
 )
 
@@ -168,6 +167,7 @@ class ObsidianWriter:
                 e_val = base_data.get(key, [])
                 if isinstance(e_val, str):
                     e_val = [e_val]
+                combined = list(set(p_val + e_val))
                 if combined:
                     base_data[key] = combined
             for key, val in proposed_data.items():
@@ -525,7 +525,9 @@ class ObsidianWriter:
             [
                 d
                 for d in self.wiki_dir.iterdir()
-                if d.is_dir() and not d.name.startswith(".")
+                if d.is_dir()
+                and not d.name.startswith(".")
+                and d.name not in ["sources", "raw_markdown"]
             ]
         )
 
@@ -540,9 +542,17 @@ class ObsidianWriter:
         # サブディレクトリセクション
         if subdirs:
             sections.append("\n# Subdirectories\n")
+            from core.utils import walk_wiki_md_files
+
             for d in subdirs:
                 # サブディレクトリ内のページ数をカウント
-                md_count = len(list(d.rglob("*.md"))) - len(list(d.glob("index.md")))
+                md_count = len(
+                    [
+                        p
+                        for p in walk_wiki_md_files(d, include_raw_and_sources=False)
+                        if p.name != "index.md"
+                    ]
+                )
                 sections.append(
                     f"* [{d.name}]({d.name}/index.md) - {md_count} concepts"
                 )
@@ -626,15 +636,12 @@ class ObsidianWriter:
         """
         Wikiの状態を俯瞰できる管理ダッシュボード (Management Dashboard.md) を生成・更新する。
         """
-        all_pages = list(self.wiki_dir.rglob("*.md"))
-        # raw_markdown, sources, .obsidian, およびダッシュボード自身を除外
+        from core.utils import walk_wiki_md_files
+
         pages = [
             p
-            for p in all_pages
-            if "raw_markdown" not in p.parts
-            and "sources" not in p.parts
-            and ".obsidian" not in p.parts
-            and p.name != "Management Dashboard.md"
+            for p in walk_wiki_md_files(self.wiki_dir, include_raw_and_sources=False)
+            if p.name != "Management Dashboard.md"
         ]
 
         red_links_counter = find_red_links(self.wiki_dir)
